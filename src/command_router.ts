@@ -291,6 +291,7 @@ if (process.argv[2] === 'test') {
         feishuAppSecret: 'test',
         adminOpenId: 'test',
         tmuxDefaultLines: 50,
+        tmuxDebug: false,
         pollInterval: 1000,
         pollTimeout: 30000,
         pollStableCount: 3,

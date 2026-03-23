@@ -37,6 +37,7 @@ function loadConfig(): Config {
     feishuAppSecret,
     adminOpenId,
     tmuxDefaultLines: parseInt(process.env.TMUX_DEFAULT_LINES || '50', 10),
+    tmuxDebug: process.env.TMUX_DEBUG === 'true',
     pollInterval: parseInt(process.env.POLL_INTERVAL || '3000', 10),
     pollTimeout: parseInt(process.env.POLL_TIMEOUT || '60000', 10),
     pollStableCount: parseInt(process.env.POLL_STABLE_COUNT || '2', 10),
@@ -236,7 +237,7 @@ async function main(): Promise<void> {
 
   const config = loadConfig();
 
-  const tmuxManager = createTmuxManager(config.tmuxDefaultLines);
+  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug);
   const parser = createParser();
   const commandRouter = createCommandRouter({ tmuxManager, parser });
   const feishuBot = createFeishuBot(config);

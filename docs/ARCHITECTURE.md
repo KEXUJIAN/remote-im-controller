@@ -238,7 +238,8 @@ ADMIN_OPEN_ID=ou_xxx           # 管理员 Open ID
 
 # tmux 配置
 TMUX_DEFAULT_LINES=50          # 默认抓取行数
-TMUX_SESSION_PREFIX=           # 会话前缀（可选）
+TMUX_DEBUG=true                # 开启 tmux 详细日志（日志写入 logs/ 目录）
+TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
 
 # 轮询配置
 POLL_INTERVAL=3000             # 轮询间隔 (ms)

@@ -13,6 +13,8 @@ export interface Config {
   adminOpenId: string;
   /** 默认抓取行数 */
   tmuxDefaultLines: number;
+  /** tmux 详细日志模式 */
+  tmuxDebug: boolean;
   /** 轮询间隔 (ms) */
   pollInterval: number;
   /** 轮询超时 (ms) */

@@ -63,6 +63,7 @@ vim .env
 可选配置：
 - `LOG_DIR` - 日志目录（默认 `./logs`，tmux 临时文件也会放这里）
 - `LOG_LEVEL` - 日志级别（默认 `info`）
+- `TMUX_DEBUG` - 开启 tmux 详细日志（默认 `false`，设为 `true` 时日志写入 `LOG_DIR`）
 - `POLL_INTERVAL` - 轮询间隔 ms（默认 3000）
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
 

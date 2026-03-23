@@ -245,6 +245,7 @@ async function runTest(): Promise<void> {
     feishuAppSecret: process.env.FEISHU_APP_SECRET || 'test_app_secret',
     adminOpenId: process.env.ADMIN_OPEN_ID || 'test_admin_open_id',
     tmuxDefaultLines: 100,
+    tmuxDebug: process.env.TMUX_DEBUG === 'true',
     pollInterval: 1000,
     pollTimeout: 30000,
     pollStableCount: 3,
