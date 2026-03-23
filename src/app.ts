@@ -2,6 +2,7 @@
  * Remote IM Controller - 主入口
  */
 
+import 'dotenv/config';
 import { mkdirSync } from 'fs';
 import { createLogger } from './logger.js';
 import { createTmuxManager } from './tmux_manager.js';
