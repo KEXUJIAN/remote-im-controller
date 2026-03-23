@@ -2,6 +2,7 @@
  * Remote IM Controller - 主入口
  */
 
+import { mkdirSync } from 'fs';
 import { createLogger } from './logger.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createParser } from './parser.js';
@@ -16,6 +17,9 @@ import type {
   FeishuMessageEvent,
   FeishuMessageContent,
 } from './types.js';
+
+process.env.TMUX_TMPDIR = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
+mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
 
 const logger = createLogger('app');
 
