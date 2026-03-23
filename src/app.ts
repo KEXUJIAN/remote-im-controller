@@ -78,6 +78,31 @@ function hasPrompt(text: string): boolean {
   return PROMPT_PATTERN.test(text.trim());
 }
 
+function extractLastCommandOutput(text: string): string {
+  const lines = text.split('\n');
+  const promptIndices: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line && PROMPT_PATTERN.test(line.trim())) {
+      promptIndices.push(i);
+    }
+  }
+
+  if (promptIndices.length < 2) {
+    return text.trim();
+  }
+
+  const secondLastIdx = promptIndices.at(-2);
+  const lastIdx = promptIndices.at(-1);
+  
+  if (secondLastIdx === undefined || lastIdx === undefined) {
+    return text.trim();
+  }
+
+  return lines.slice(secondLastIdx + 1, lastIdx).join('\n').trim();
+}
+
 function startPolling(state: AppState, session: string, chatId: string): void {
   const existingPoll = state.pollStates.get(session);
   if (existingPoll) {
@@ -134,7 +159,7 @@ async function pollTick(state: AppState, session: string): Promise<void> {
         logger.info('pollTick', `输出稳定: ${session}`, { stableCount: pollState.stableCount });
       }
 
-      await feishuBot.sendMarkdown(pollState.chatId, `**${session}** 输出:\n\`\`\`\n${result.cleaned}\n\`\`\``);
+      await feishuBot.sendMarkdown(pollState.chatId, `**${session}** 输出:\n\`\`\`\n${extractLastCommandOutput(result.cleaned)}\n\`\`\``);
       return;
     }
 
