@@ -38,10 +38,10 @@ interface Logger {
 ```
 
 **验收标准**：
-- [ ] 输出 JSON 格式日志
-- [ ] 包含 timestamp、level、module、action 字段
-- [ ] error 级别自动记录完整堆栈
-- [ ] 通过环境变量 LOG_LEVEL 控制输出级别
+- [x] 输出 JSON 格式日志
+- [x] 包含 timestamp、level、module、action 字段
+- [x] error 级别自动记录完整堆栈
+- [x] 通过环境变量 LOG_LEVEL 控制输出级别
 
 **依赖**：无（依赖 types.ts 已完成）
 
@@ -76,12 +76,12 @@ interface TmuxManager {
 ```
 
 **验收标准**：
-- [ ] 启动时检查 tmux 可用性，不可用则抛出 TmuxNotAvailableError
-- [ ] createSession 执行 `tmux new-session -d -s <name>`
-- [ ] sendCommand 执行 `tmux send-keys -t <name> "<cmd>" C-m`
-- [ ] captureScreen 执行 `tmux capture-pane -p -t <name> -S -<lines>`
-- [ ] 所有错误包含详细堆栈和上下文
-- [ ] 支持 CLI 独立测试：`npm run test:tmux`
+- [x] 启动时检查 tmux 可用性，不可用则抛出 TmuxNotAvailableError
+- [x] createSession 执行 `tmux new-session -d -s <name>`
+- [x] sendCommand 执行 `tmux send-keys -t <name> "<cmd>" C-m`
+- [x] captureScreen 执行 `tmux capture-pane -p -t <name> -S -<lines>`
+- [x] 所有错误包含详细堆栈和上下文
+- [x] 支持 CLI 独立测试：`npm run test:tmux`
 
 **依赖**：Task 1.1 (logger.ts)
 
@@ -112,12 +112,12 @@ export function createParser(): Parser;
 ```
 
 **验收标准**：
-- [ ] 使用 strip-ansi 去除 ANSI 颜色代码
-- [ ] 过滤连续空行（最多保留 1 个）
-- [ ] 移除末尾 bash/zsh 提示符（匹配 `username@hostname:~$` 等模式）
-- [ ] 截取最后 N 行（默认 50 行）
-- [ ] generateHash 返回内容的 SHA256 哈希
-- [ ] 支持 CLI 独立测试：`npm run test:parser`
+- [x] 使用 strip-ansi 去除 ANSI 颜色代码
+- [x] 过滤连续空行（最多保留 1 个）
+- [x] 移除末尾 bash/zsh 提示符（匹配 `username@hostname:~$` 等模式）
+- [x] 截取最后 N 行（默认 50 行）
+- [x] generateHash 返回内容的 SHA256 哈希
+- [x] 支持 CLI 独立测试：`npm run test:parser`
 
 **依赖**：Task 1.1 (logger.ts)
 
@@ -151,10 +151,10 @@ export function tokenize(body: string): string[];
 ```
 
 **验收标准**：
-- [ ] 正确解析带空格的命令（使用引号包裹）
-- [ ] 非指令格式返回 null
-- [ ] 内置动作（list/create/kill/help/status）正确识别
-- [ ] 所有边界情况有测试用例
+- [x] 正确解析带空格的命令（使用引号包裹）
+- [x] 非指令格式返回 null
+- [x] 内置动作（list/create/kill/help/status）正确识别
+- [x] 所有边界情况有测试用例
 
 **依赖**：Task 1.1 (logger.ts)
 
@@ -200,9 +200,9 @@ interface CommandRouter {
 | status | 查看会话状态 | 状态信息 |
 
 **验收标准**：
-- [ ] 所有 action 有对应处理器
-- [ ] 未知 action 返回友好错误提示
-- [ ] 错误包含详细上下文
+- [x] 所有 action 有对应处理器
+- [x] 未知 action 返回友好错误提示
+- [x] 错误包含详细上下文
 
 **依赖**：Task 2.1, Task 2.2, Task 2.3
 
@@ -233,13 +233,13 @@ interface FeishuBot {
 ```
 
 **验收标准**：
-- [ ] 使用 @larksuiteoapi/node-sdk 建立 WSS 长连接
-- [ ] 接收消息后验证 sender.open_id === ADMIN_OPEN_ID
-- [ ] 非管理员消息静默丢弃
-- [ ] 断线自动重连，最多 RECONNECT_MAX_RETRIES 次
-- [ ] 超过重连次数抛出 ReconnectLimitExceededError
-- [ ] sendMarkdown 发送代码块格式的消息卡片
-- [ ] 支持 CLI 独立测试：`npm run test:feishu`
+- [x] 使用 @larksuiteoapi/node-sdk 建立 WSS 长连接
+- [x] 接收消息后验证 sender.open_id === ADMIN_OPEN_ID
+- [x] 非管理员消息静默丢弃
+- [x] 断线自动重连，最多 RECONNECT_MAX_RETRIES 次
+- [x] 超过重连次数抛出 ReconnectLimitExceededError
+- [x] sendMarkdown 发送代码块格式的消息卡片
+- [x] 支持 CLI 独立测试：`npm run test:feishu`
 
 **依赖**：Task 1.1 (logger.ts)
 
@@ -288,12 +288,12 @@ SIGINT/SIGTERM →
 ```
 
 **验收标准**：
-- [ ] 完整流程可运行
-- [ ] 发送 `/cmd help` 收到正确回复
-- [ ] 发送 `/cmd list` 返回 tmux 会话列表
-- [ ] 发送 `/cmd <session> <command>` 执行命令并推送结果
-- [ ] 优雅退出不丢失数据
-- [ ] 未捕获异常记录日志后退出（let it crash）
+- [x] 完整流程可运行
+- [x] 发送 `/cmd help` 收到正确回复
+- [x] 发送 `/cmd list` 返回 tmux 会话列表
+- [x] 发送 `/cmd <session> <command>` 执行命令并推送结果
+- [x] 优雅退出不丢失数据
+- [x] 未捕获异常记录日志后退出（let it crash）
 
 **依赖**：所有前置 Task
 
