@@ -227,7 +227,10 @@ if (process.argv[2] === 'test') {
     console.log(`3. 创建测试会话 "${testSessionName}"...`);
     try {
       await manager.createSession(testSessionName);
-      console.log('   ✓ 会话创建成功\n');
+      console.log('   ✓ 会话创建成功');
+      console.log('   提示: 可在另一个终端运行 `tmux attach -t %s` 观察', testSessionName);
+      console.log();
+      await new Promise((r) => setTimeout(r, 3000));
     } catch (err) {
       console.log('   ✗ 创建失败:', err instanceof Error ? err.message : err);
       process.exit(1);
@@ -242,7 +245,6 @@ if (process.argv[2] === 'test') {
     console.log(`5. 向会话 "${testSessionName}" 发送命令 "echo hello"...`);
     try {
       await manager.sendCommand(testSessionName, 'echo hello');
-      // 等待命令执行
       await new Promise((r) => setTimeout(r, 500));
       console.log('   ✓ 命令发送成功\n');
     } catch (err) {
@@ -265,6 +267,8 @@ if (process.argv[2] === 'test') {
 
     // 测试 7: 终止会话
     console.log(`7. 终止测试会话 "${testSessionName}"...`);
+    console.log('   等待 3 秒，可在另一个终端 attach 观察...');
+    await new Promise((r) => setTimeout(r, 3000));
     try {
       await manager.killSession(testSessionName);
       console.log('   ✓ 会话已终止\n');

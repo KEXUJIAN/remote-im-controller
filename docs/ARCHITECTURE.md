@@ -251,7 +251,10 @@ RECONNECT_DELAY=5000           # 重连延迟 (ms)
 
 # 日志配置
 LOG_LEVEL=debug                # 日志级别
-LOG_DIR=./logs                 # 日志目录
+LOG_DIR=./logs                 # 日志目录 (tmux 临时文件也会放这里)
+
+# tmux 配置 (可选)
+TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
 ```
 
 ---
@@ -295,7 +298,7 @@ LOG_DIR=./logs                 # 日志目录
 每个模块提供独立的测试入口，可通过 CLI 单独调用：
 
 ```bash
-# 测试 tmux_manager
+# 测试 tmux_manager (创建会话后等待 3 秒，可在另一终端 attach 观察)
 tsx src/tmux_manager.ts test
 
 # 测试 parser
@@ -304,6 +307,12 @@ tsx src/parser.ts test
 # 测试 feishu_bot (模拟模式)
 tsx src/feishu_bot.ts test --mock
 ```
+
+### tmux 测试观察
+
+运行 `npm run test:tmux` 时：
+- 步骤 3 创建会话后等待 3 秒，可在另一终端运行 `tmux attach -t <session_name>` 观察
+- 步骤 7 终止会话前等待 3 秒，便于观察会话状态
 
 ### 集成测试
 

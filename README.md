@@ -60,6 +60,12 @@ vim .env
 - `FEISHU_APP_SECRET` - 飞书应用密钥
 - `ADMIN_OPEN_ID` - 管理员 Open ID
 
+可选配置：
+- `LOG_DIR` - 日志目录（默认 `./logs`，tmux 临时文件也会放这里）
+- `LOG_LEVEL` - 日志级别（默认 `info`）
+- `POLL_INTERVAL` - 轮询间隔 ms（默认 3000）
+- `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
+
 ### 4. 启动服务
 
 **开发模式**（热重载）：
