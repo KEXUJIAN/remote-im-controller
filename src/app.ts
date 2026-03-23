@@ -154,7 +154,7 @@ function stopAllPolling(state: AppState): void {
 
 async function handleMessage(state: AppState, event: FeishuMessageEvent): Promise<void> {
   const { config, commandRouter, feishuBot, lastSessionMap } = state;
-  const { message, sender } = event.event;
+  const { message, sender } = event;
   const chatId = message.chat_id;
   const messageId = message.message_id;
 
@@ -166,7 +166,7 @@ async function handleMessage(state: AppState, event: FeishuMessageEvent): Promis
       chatId,
       messageId,
       text,
-      sender: sender.sender_id.open_id,
+      sender: sender.sender_id?.open_id,
     });
 
     const parsed = parseCommand(text);

@@ -2,6 +2,8 @@
  * Remote IM Controller - 类型定义
  */
 
+import type { EventHandles } from '@larksuiteoapi/node-sdk';
+
 // ============ 环境配置 ============
 
 export interface Config {
@@ -106,45 +108,9 @@ export type CommandHandler = (ctx: CommandContext) => Promise<CommandResult>;
 
 // ============ 飞书消息 ============
 
-export interface FeishuMessageEvent {
-  schema: '2.0';
-  header: {
-    event_id: string;
-    event_type: string;
-    create_time: string;
-    token: string;
-    app_id: string;
-    tenant_key: string;
-  };
-  event: {
-    sender: {
-      sender_id: {
-        open_id: string;
-        user_id: string;
-        union_id: string;
-      };
-      sender_type: string;
-      tenant_key: string;
-    };
-    message: {
-      message_id: string;
-      root_id: string;
-      parent_id: string;
-      create_time: string;
-      chat_id: string;
-      chat_type: 'p2p' | 'group';
-      message_type: string;
-      content: string;
-      mentions?: Array<{
-        key: string;
-        id: {
-          open_id: string;
-          user_id: string;
-        };
-      }>;
-    };
-  };
-}
+export type FeishuMessageEvent = Parameters<
+  NonNullable<EventHandles['im.message.receive_v1']>
+>[0];
 
 export interface FeishuMessageContent {
   text: string;

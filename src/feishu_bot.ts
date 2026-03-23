@@ -96,12 +96,12 @@ export function createFeishuBot(config: Config): FeishuBot {
   ): Promise<void> {
     const eventDispatcher = new lark.EventDispatcher({}).register({
       // 消息接收事件
-      'im.message.receive_v1': async (data: unknown) => {
+      'im.message.receive_v1': async (data: FeishuMessageEvent) => {
         try {
-          const event = data as FeishuMessageEvent;
+          const event = data;
           
           // 验证发送者身份
-          const senderOpenId = event.event.sender.sender_id.open_id;
+          const senderOpenId = event.sender?.sender_id?.open_id;
           if (senderOpenId !== config.adminOpenId) {
             logger.debug('auth', '非管理员消息，已丢弃', {
               senderOpenId,
@@ -111,9 +111,9 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
 
           logger.info('message', '收到消息', {
-            chatId: event.event.message.chat_id,
-            messageId: event.event.message.message_id,
-            messageType: event.event.message.message_type,
+            chatId: event.message.chat_id,
+            messageId: event.message.message_id,
+            messageType: event.message.message_type,
           });
 
           await onMessage(event);
@@ -266,18 +266,18 @@ async function runTest(): Promise<void> {
   // 模拟消息处理器
   const onMessage = async (event: FeishuMessageEvent): Promise<void> => {
     console.log('收到消息:', {
-      chatId: event.event.message.chat_id,
-      content: event.event.message.content,
-      sender: event.event.sender.sender_id.open_id,
+      chatId: event.message.chat_id,
+      content: event.message.content,
+      sender: event.sender.sender_id?.open_id,
     });
 
     // 解析消息内容
-    const content: FeishuMessageContent = JSON.parse(event.event.message.content);
+    const content: FeishuMessageContent = JSON.parse(event.message.content);
     console.log('消息文本:', content.text);
 
     // 回复
     await bot.sendMarkdown(
-      event.event.message.chat_id,
+      event.message.chat_id,
       `收到消息: ${content.text}`,
       '测试回复'
     );
