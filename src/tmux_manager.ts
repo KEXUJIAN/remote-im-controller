@@ -160,8 +160,10 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
 
 if (process.argv[2] === 'test') {
   import('fs').then(({ mkdirSync }) => {
-    process.env.TMUX_TMPDIR = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
-    mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
+    import('path').then(({ resolve }) => {
+      process.env.TMUX_TMPDIR = resolve(process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs');
+      mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
+    });
   });
 
   const debug = process.env.TMUX_DEBUG === 'true';

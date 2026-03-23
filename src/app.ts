@@ -4,6 +4,7 @@
 
 import 'dotenv/config';
 import { mkdirSync } from 'fs';
+import { resolve } from 'path';
 import { createLogger } from './logger.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createParser } from './parser.js';
@@ -19,7 +20,7 @@ import type {
   FeishuMessageContent,
 } from './types.js';
 
-process.env.TMUX_TMPDIR = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
+process.env.TMUX_TMPDIR = resolve(process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs');
 mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
 
 const logger = createLogger('app');
