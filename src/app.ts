@@ -72,7 +72,7 @@ interface AppState {
   isShuttingDown: boolean;
 }
 
-const PROMPT_PATTERN = /[\w.-]+@[\w.-]+:[^$\n]*[$#]\s*$/;
+const PROMPT_PATTERN = /(?:@[\w.-]+:[^$\n]*)?[$#❯>]\s*$|➜.*\S$/;
 
 function hasPrompt(text: string): boolean {
   return PROMPT_PATTERN.test(text.trim());
