@@ -27,11 +27,14 @@ function cleanOutput(raw: string): string {
 
 export function createTmuxManager(defaultLines: number, debug: boolean = false): TmuxManager {
   const debugArgs = debug ? ['-v', '-v'] : [];
+  const tmuxTmpDir = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
 
   function execTmux(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
       const proc = spawn('tmux', [...debugArgs, ...args], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: debug ? tmuxTmpDir : undefined,
+        env: { ...process.env },
       });
 
       let stdout = '';
