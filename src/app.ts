@@ -72,37 +72,6 @@ interface AppState {
   isShuttingDown: boolean;
 }
 
-const PROMPT_PATTERN = /(?:@[\w.-]+:[^$\n]*)?[$#❯>]\s*$|➜.*\S$/;
-
-function hasPrompt(text: string): boolean {
-  return PROMPT_PATTERN.test(text.trim());
-}
-
-function extractLastCommandOutput(text: string): string {
-  const lines = text.split('\n');
-  const promptIndices: number[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line && PROMPT_PATTERN.test(line.trim())) {
-      promptIndices.push(i);
-    }
-  }
-
-  if (promptIndices.length < 2) {
-    return text.trim();
-  }
-
-  const secondLastIdx = promptIndices.at(-2);
-  const lastIdx = promptIndices.at(-1);
-  
-  if (secondLastIdx === undefined || lastIdx === undefined) {
-    return text.trim();
-  }
-
-  return lines.slice(secondLastIdx + 1, lastIdx).join('\n').trim();
-}
-
 function startPolling(state: AppState, session: string, chatId: string): void {
   const existingPoll = state.pollStates.get(session);
   if (existingPoll) {
@@ -128,7 +97,7 @@ async function pollTick(state: AppState, session: string): Promise<void> {
   const pollState = state.pollStates.get(session);
   if (!pollState || state.isShuttingDown) return;
 
-  const { config, tmuxManager, feishuBot } = state;
+  const { config, tmuxManager, feishuBot, parser } = state;
 
   try {
     const result = await tmuxManager.captureScreen(session, config.tmuxDefaultLines);
@@ -147,8 +116,7 @@ async function pollTick(state: AppState, session: string): Promise<void> {
 
     const elapsed = Date.now() - pollState.startTime;
     const isTimeout = elapsed >= config.pollTimeout;
-    // 稳定计数达标且末尾有提示符才算稳定完成
-    const isStable = pollState.stableCount >= config.pollStableCount && hasPrompt(result.cleaned);
+    const isStable = pollState.stableCount >= config.pollStableCount && parser.hasPrompt(result.cleaned);
 
     if (isStable || isTimeout) {
       state.pollStates.delete(session);
@@ -159,13 +127,13 @@ async function pollTick(state: AppState, session: string): Promise<void> {
         logger.info('pollTick', `输出稳定: ${session}`, { stableCount: pollState.stableCount });
       }
 
-      await feishuBot.sendMarkdown(pollState.chatId, `**${session}** 输出:\n\`\`\`\n${extractLastCommandOutput(result.cleaned)}\n\`\`\``);
+      await feishuBot.sendMarkdown(pollState.chatId, `**${session}** 输出:\n\`\`\`\n${parser.extractLastCommandOutput(result.cleaned)}\n\`\`\``);
       return;
     }
 
     pollState.timerId = setTimeout(() => pollTick(state, session), config.pollInterval);
   } catch (error) {
-    logger.error('pollTick', `轮询失败: ${session}`, error instanceof Error ? error : new Error(String(error)));
+    logger.error('pollTick', `轮询失败: ${session}`, error);
     state.pollStates.delete(session);
   }
 }
@@ -230,10 +198,7 @@ async function handleMessage(state: AppState, event: FeishuMessageEvent): Promis
       startPolling(state, result.lastSession, chatId);
     }
   } catch (error) {
-    logger.error('handleMessage', '消息处理失败', error instanceof Error ? error : new Error(String(error)), {
-      chatId,
-      messageId,
-    });
+    logger.error('handleMessage', '消息处理失败', error, { chatId, messageId });
 
     const errorMessage = error instanceof Error ? error.message : String(error);
     await feishuBot.sendMarkdown(chatId, `❌ 处理失败: ${errorMessage}`);
@@ -254,7 +219,7 @@ function gracefulShutdown(state: AppState, signal: string): void {
       process.exit(0);
     })
     .catch((error) => {
-      logger.error('shutdown', '退出时出错', error instanceof Error ? error : new Error(String(error)));
+      logger.error('shutdown', '退出时出错', error);
       process.exit(1);
     });
 }
@@ -266,7 +231,7 @@ async function main(): Promise<void> {
 
   const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug);
   const parser = createParser();
-  const commandRouter = createCommandRouter({ tmuxManager, parser });
+  const commandRouter = createCommandRouter({ tmuxManager });
   const feishuBot = createFeishuBot(config);
 
   const state: AppState = {
@@ -292,8 +257,7 @@ async function main(): Promise<void> {
   });
 
   process.on('unhandledRejection', (reason) => {
-    const error = reason instanceof Error ? reason : new Error(String(reason));
-    logger.error('unhandledRejection', '未处理的 Promise 拒绝', error);
+    logger.error('unhandledRejection', '未处理的 Promise 拒绝', reason);
     gracefulShutdown(state, 'unhandledRejection');
   });
 
@@ -304,6 +268,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  logger.error('main', '启动失败', error instanceof Error ? error : new Error(String(error)));
+  logger.error('main', '启动失败', error);
   process.exit(1);
 });

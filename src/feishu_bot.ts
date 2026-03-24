@@ -118,7 +118,7 @@ export function createFeishuBot(config: Config): FeishuBot {
 
           await onMessage(event);
         } catch (error) {
-          logger.error('message', '消息处理失败', error instanceof Error ? error : new Error(String(error)));
+          logger.error('message', '消息处理失败', error);
         }
       },
     });
@@ -134,7 +134,7 @@ export function createFeishuBot(config: Config): FeishuBot {
       state.reconnectAttempts = 0; // 重置重连计数
       logger.info('start', 'WebSocket 连接已建立');
     } catch (error) {
-      logger.error('start', 'WebSocket 连接失败', error instanceof Error ? error : new Error(String(error)));
+      logger.error('start', 'WebSocket 连接失败', error);
       await attemptReconnect(onMessage);
     }
   }
@@ -164,7 +164,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           state.wsClient.close();
           logger.info('stop', 'WebSocket 连接已关闭');
         } catch (error) {
-          logger.error('stop', '关闭连接失败', error instanceof Error ? error : new Error(String(error)));
+          logger.error('stop', '关闭连接失败', error);
         }
         state.wsClient = null;
       }
@@ -228,9 +228,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           messageId: response.data?.message_id,
         });
       } catch (error) {
-        logger.error('send', '发送消息失败', error instanceof Error ? error : new Error(String(error)), {
-          chatId,
-        });
+        logger.error('send', '发送消息失败', error, { chatId });
         throw error;
       }
     },

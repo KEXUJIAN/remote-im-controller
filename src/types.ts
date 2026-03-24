@@ -189,26 +189,6 @@ export class SessionNotFoundError extends Error {
   }
 }
 
-export class CommandParseError extends Error {
-  constructor(
-    public input: string,
-    public reason: string
-  ) {
-    super(`Failed to parse command: ${reason}`);
-    this.name = 'CommandParseError';
-  }
-}
-
-export class AuthenticationError extends Error {
-  constructor(
-    public openId: string,
-    public expectedOpenId: string
-  ) {
-    super('Authentication failed: unauthorized user');
-    this.name = 'AuthenticationError';
-  }
-}
-
 export class ReconnectLimitExceededError extends Error {
   constructor(
     public attempts: number,

@@ -14,11 +14,13 @@ export interface Parser {
   removeAnsi(text: string): string;
   filterEmptyLines(text: string): string;
   removePrompt(text: string): string;
+  hasPrompt(text: string): boolean;
+  extractLastCommandOutput(text: string): string;
   generateHash(text: string): string;
 }
 
 /** 匹配常见 shell 提示符的正则表达式 */
-const PROMPT_PATTERN = /\s*[\w.-]+@[\w.-]+:[^$\n]*[$#]\s*$/;
+const PROMPT_PATTERN = /(?:@[\w.-]+:[^$\n]*)?[$#❯>]\s*$|➜.*\S$/;
 
 /**
  * 创建 Parser 实例
@@ -63,6 +65,35 @@ export function createParser(): Parser {
     return text.replace(PROMPT_PATTERN, '');
   }
 
+  function hasPrompt(text: string): boolean {
+    return PROMPT_PATTERN.test(text.trim());
+  }
+
+  function extractLastCommandOutput(text: string): string {
+    const lines = text.split('\n');
+    const promptIndices: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line && PROMPT_PATTERN.test(line.trim())) {
+        promptIndices.push(i);
+      }
+    }
+
+    if (promptIndices.length < 2) {
+      return text.trim();
+    }
+
+    const secondLastIdx = promptIndices.at(-2);
+    const lastIdx = promptIndices.at(-1);
+
+    if (secondLastIdx === undefined || lastIdx === undefined) {
+      return text.trim();
+    }
+
+    return lines.slice(secondLastIdx + 1, lastIdx).join('\n').trim();
+  }
+
   /**
    * 清洗原始输出
    * 按顺序调用: removeAnsi → filterEmptyLines → removePrompt
@@ -94,11 +125,8 @@ export function createParser(): Parser {
     return result;
   }
 
-  /**
-   * 生成内容的 SHA256 哈希（十六进制字符串）
-   */
   function generateHash(text: string): string {
-    return createHash('sha256').update(text).digest('hex');
+    return createHash('md5').update(text).digest('hex');
   }
 
   return {
@@ -106,6 +134,8 @@ export function createParser(): Parser {
     removeAnsi,
     filterEmptyLines,
     removePrompt,
+    hasPrompt,
+    extractLastCommandOutput,
     generateHash,
   };
 }
@@ -133,14 +163,29 @@ if (process.argv[2] === 'test') {
   console.log('   输出:', JSON.stringify(parser.removePrompt(promptText)));
   console.log();
 
+  const hasPromptText1 = '命令输出\nuser@host:~$ ';
+  const hasPromptText2 = '命令输出';
+  console.log('4. hasPrompt 测试:');
+  console.log('   输入 1:', JSON.stringify(hasPromptText1));
+  console.log('   结果:', parser.hasPrompt(hasPromptText1));
+  console.log('   输入 2:', JSON.stringify(hasPromptText2));
+  console.log('   结果:', parser.hasPrompt(hasPromptText2));
+  console.log();
+
+  const extractText = 'line1\nuser@host:~$ command\noutput line\nuser@host:~$ ';
+  console.log('5. extractLastCommandOutput 测试:');
+  console.log('   输入:', JSON.stringify(extractText));
+  console.log('   输出:', JSON.stringify(parser.extractLastCommandOutput(extractText)));
+  console.log();
+
   const hashInput = '测试内容';
-  console.log('4. generateHash 测试:');
+  console.log('6. generateHash 测试:');
   console.log('   输入:', hashInput);
   console.log('   哈希:', parser.generateHash(hashInput));
   console.log();
 
   const rawOutput = '\x1b[32m成功\x1b[0m\n\n\n\n其他输出\nuser@host:~$ ';
-  console.log('5. cleanOutput 测试 (maxLines=10):');
+  console.log('7. cleanOutput 测试 (maxLines=10):');
   console.log('   输入:', JSON.stringify(rawOutput));
   console.log('   输出:', JSON.stringify(parser.cleanOutput(rawOutput, 10)));
   console.log();

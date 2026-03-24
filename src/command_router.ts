@@ -4,21 +4,17 @@
 
 import type { CommandContext, CommandResult, CommandHandler } from './types.js';
 import type { TmuxManager } from './tmux_manager.js';
-import type { Parser } from './parser.js';
 import { createLogger } from './logger.js';
 import { SessionNotFoundError } from './types.js';
 
 const logger = createLogger('command_router');
 
-/** CommandRouter 接口 */
 export interface CommandRouter {
   route(ctx: CommandContext): Promise<CommandResult>;
 }
 
-/** CommandRouter 依赖 */
 export interface CommandRouterDeps {
   tmuxManager: TmuxManager;
-  parser: Parser;
 }
 
 /** 帮助文本 */
@@ -40,7 +36,7 @@ const HELP_TEXT = `指令说明:
  * 创建 CommandRouter 实例
  */
 export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
-  const { tmuxManager, parser: _unusedParser } = deps;
+  const { tmuxManager } = deps;
 
   /** 处理 exec 动作 - 在会话中执行命令 */
   async function handleExec(ctx: CommandContext): Promise<CommandResult> {
@@ -246,7 +242,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return await handler(ctx);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      logger.error('route', `处理指令失败: ${parsed.action}`, error, { parsed });
+      logger.error('route', `处理指令失败: ${parsed.action}`, err, { parsed });
 
       // 如果是 SessionNotFoundError，返回友好提示
       if (err instanceof SessionNotFoundError) {
@@ -277,14 +273,8 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
 if (process.argv[2] === 'test') {
   import('./tmux_manager.js')
     .then(({ createTmuxManager }) => {
-      return import('./parser.js').then(({ createParser }) => {
-        return { createTmuxManager, createParser };
-      });
-    })
-    .then(({ createTmuxManager, createParser }) => {
       const tmuxManager = createTmuxManager(50);
-      const parser = createParser();
-      const router = createCommandRouter({ tmuxManager, parser });
+      const router = createCommandRouter({ tmuxManager });
 
       const mockConfig = {
         feishuAppId: 'test',

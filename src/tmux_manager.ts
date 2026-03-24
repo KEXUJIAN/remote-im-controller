@@ -1,5 +1,10 @@
+/**
+ * Remote IM Controller - tmux 管理模块
+ */
+
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
+import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
 import type { TmuxCaptureResult } from './types.js';
 import { TmuxNotAvailableError } from './types.js';
@@ -14,15 +19,6 @@ export interface TmuxManager {
   sendCommand(name: string, cmd: string): Promise<void>;
   captureScreen(name: string, lines?: number): Promise<TmuxCaptureResult>;
   sessionExists(name: string): Promise<boolean>;
-}
-
-function cleanOutput(raw: string): string {
-  return raw
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^\x07]*\x07/g, '')
-    .replace(/\x1b[()(AB012]/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
 }
 
 export function createTmuxManager(defaultLines: number, debug: boolean = false): TmuxManager {
@@ -44,7 +40,7 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
       proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
       proc.on('error', (err) => {
-        const error = new Error(`tmux command failed: ${err.message}`);
+        const error = new Error(`tmux command failed: ${err instanceof Error ? err.message : 'unknown error'}`);
         error.cause = err;
         logger.error('exec', `tmux command error: ${args.join(' ')}`, error);
         reject(error);
@@ -82,9 +78,8 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
         await execTmux(['new-session', '-d', '-s', name]);
         logger.info('createSession', `会话创建成功: ${name}`);
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('createSession', `创建会话失败: ${name}`, error);
-        throw error;
+        logger.error('createSession', `创建会话失败: ${name}`, err);
+        throw err;
       }
     },
 
@@ -94,9 +89,8 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
         await execTmux(['kill-session', '-t', name]);
         logger.info('killSession', `会话已终止: ${name}`);
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('killSession', `终止会话失败: ${name}`, error);
-        throw error;
+        logger.error('killSession', `终止会话失败: ${name}`, err);
+        throw err;
       }
     },
 
@@ -113,9 +107,8 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
           logger.debug('listSessions', '没有找到任何会话或服务器未启动');
           return [];
         }
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('listSessions', '列出会话失败', error);
-        throw error;
+        logger.error('listSessions', '列出会话失败', err);
+        throw err;
       }
     },
 
@@ -125,9 +118,8 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
         await execTmux(['send-keys', '-t', name, cmd, 'C-m']);
         logger.debug('sendCommand', `命令已发送: ${cmd}`);
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('sendCommand', `发送命令失败: ${cmd}`, error, { session: name });
-        throw error;
+        logger.error('sendCommand', `发送命令失败: ${cmd}`, err, { session: name });
+        throw err;
       }
     },
 
@@ -136,15 +128,14 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
       logger.debug('captureScreen', `抓取会话 ${name} 的屏幕输出`, { lines: lineCount });
       try {
         const raw = await execTmux(['capture-pane', '-p', '-t', name, '-S', `-${lineCount}`]);
-        const cleaned = cleanOutput(raw);
+        const cleaned = stripAnsi(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const hash = createHash('md5').update(cleaned).digest('hex');
         const result: TmuxCaptureResult = { raw, cleaned, lines: cleaned.split('\n').length, hash };
         logger.debug('captureScreen', `抓取成功`, { rawLength: raw.length, cleanedLength: cleaned.length, lines: result.lines, hash });
         return result;
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('captureScreen', `抓取屏幕失败`, error, { session: name });
-        throw error;
+        logger.error('captureScreen', `抓取屏幕失败`, err, { session: name });
+        throw err;
       }
     },
 

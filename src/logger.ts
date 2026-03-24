@@ -32,19 +32,26 @@ function output(entry: LogEntry): void {
   process.stdout.write(json + '\n');
 }
 
-/** Logger 接口 */
+function normalizeError(err: unknown): { name: string; message: string; stack: string } | undefined {
+  if (err === undefined || err === null) return undefined;
+  if (err instanceof Error) {
+    return { name: err.name, message: err.message, stack: err.stack || '' };
+  }
+  const message = typeof err === 'string' ? err : JSON.stringify(err);
+  return { name: 'Error', message, stack: '' };
+}
+
 export interface Logger {
   debug(action: string, message: string, context?: Record<string, unknown>): void;
   info(action: string, message: string, context?: Record<string, unknown>): void;
   warn(action: string, message: string, context?: Record<string, unknown>): void;
-  error(action: string, message: string, error?: Error, context?: Record<string, unknown>): void;
+  error(action: string, message: string, error?: unknown, context?: Record<string, unknown>): void;
 }
 
-/** 创建日志记录器 */
 export function createLogger(module: string): Logger {
   const configuredLevel = getConfiguredLevel();
 
-  const log = (level: LogLevel, action: string, message: string, context?: Record<string, unknown>, error?: Error): void => {
+  const log = (level: LogLevel, action: string, message: string, context?: Record<string, unknown>, normalizedError?: { name: string; message: string; stack: string }): void => {
     if (!shouldLog(level, configuredLevel)) {
       return;
     }
@@ -57,12 +64,8 @@ export function createLogger(module: string): Logger {
       message,
     };
 
-    if (error) {
-      entry.error = {
-        name: error.name,
-        message: error.message,
-        stack: error.stack || '',
-      };
+    if (normalizedError) {
+      entry.error = normalizedError;
     }
 
     if (context && Object.keys(context).length > 0) {
@@ -85,8 +88,8 @@ export function createLogger(module: string): Logger {
       log('warn', action, message, context);
     },
 
-    error(action: string, message: string, error?: Error, context?: Record<string, unknown>): void {
-      log('error', action, message, context, error);
+    error(action: string, message: string, error?: unknown, context?: Record<string, unknown>): void {
+      log('error', action, message, context, normalizeError(error));
     },
   };
 }
