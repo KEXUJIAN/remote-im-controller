@@ -86,6 +86,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return {
         success: true,
         message: '当前没有活跃的 tmux 会话',
+        cardVariables: { sessions: [] },
       };
     }
 
@@ -93,6 +94,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
     return {
       success: true,
       message: `当前会话 (${sessions.length}):\n${formatted}`,
+      cardVariables: { sessions },
     };
   }
 

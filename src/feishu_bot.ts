@@ -34,6 +34,12 @@ export interface FeishuBot {
   sendMarkdown(chatId: string, text: string, title?: string): Promise<void>;
   /** 发送自定义卡片消息 */
   sendCard(chatId: string, card: FeishuCard): Promise<void>;
+  /** 发送模板卡片消息 */
+  sendTemplateCard(
+    chatId: string,
+    templateId: string,
+    variables: Record<string, unknown>
+  ): Promise<void>;
   /** 注册卡片事件处理器 */
   registerCardHandler(handler: (data: CardActionTriggerEvent) => Promise<CardHandlerResponse>): void;
   /** 注册菜单事件处理器 */
@@ -282,6 +288,46 @@ export function createFeishuBot(config: Config): FeishuBot {
         });
       } catch (error) {
         logger.error('send', '发送消息失败', error, { chatId });
+        throw error;
+      }
+    },
+
+    async sendTemplateCard(
+      chatId: string,
+      templateId: string,
+      variables: Record<string, unknown>
+    ): Promise<void> {
+      const content = JSON.stringify({
+        type: 'template',
+        data: {
+          template_id: templateId,
+          template_variable: variables,
+        },
+      });
+
+      try {
+        const response = await state.client.im.v1.message.create({
+          params: {
+            receive_id_type: 'chat_id',
+          },
+          data: {
+            receive_id: chatId,
+            msg_type: 'interactive',
+            content,
+          },
+        });
+
+        if (response.code !== 0) {
+          throw new Error(`发送模板卡片失败: ${response.msg || `code ${response.code}`}`);
+        }
+
+        logger.debug('sendTemplate', '模板卡片发送成功', {
+          chatId,
+          templateId,
+          messageId: response.data?.message_id,
+        });
+      } catch (error) {
+        logger.error('sendTemplate', '发送模板卡片失败', error, { chatId, templateId });
         throw error;
       }
     },

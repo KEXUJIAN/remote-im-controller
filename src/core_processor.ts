@@ -102,6 +102,12 @@ export interface CoreProcessorDeps {
   config: Config;
   /** 发送消息函数 */
   sendMessage: (chatId: string, message: string) => Promise<void>;
+  /** 发送模板卡片函数（可选） */
+  sendTemplateCard?: (
+    chatId: string,
+    templateId: string,
+    variables: Record<string, unknown>
+  ) => Promise<void>;
   /** 最后操作会话映射（可选） */
   lastSessionMap?: Map<string, string>;
 }
@@ -110,7 +116,7 @@ export interface CoreProcessorDeps {
  * 创建核心处理器
  */
 export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
-  const { stateManager, commandRouter, tmuxManager, config, sendMessage, lastSessionMap } = deps;
+  const { stateManager, commandRouter, tmuxManager, config, sendMessage, sendTemplateCard, lastSessionMap } = deps;
 
   /**
    * 处理 TEXT 消息
@@ -153,6 +159,12 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       // 更新 lastSession
       if (result.lastSession && lastSessionMap) {
         lastSessionMap.set(chatId, result.lastSession);
+      }
+
+      // 优先发送模板卡片
+      if (result.cardVariables && config.cardTemplateId && sendTemplateCard) {
+        await sendTemplateCard(chatId, config.cardTemplateId, result.cardVariables);
+        return;
       }
 
       // 构建回复消息

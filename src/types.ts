@@ -31,6 +31,8 @@ export interface Config {
   logLevel: LogLevel;
   /** 日志目录 */
   logDir: string;
+  /** 卡片模板 ID（可选） */
+  cardTemplateId?: string;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -102,6 +104,8 @@ export interface CommandResult {
   error?: Error;
   /** 更新的会话状态 */
   lastSession?: string;
+  /** 卡片模板变量 */
+  cardVariables?: Record<string, unknown>;
 }
 
 export type CommandHandler = (ctx: CommandContext) => Promise<CommandResult>;

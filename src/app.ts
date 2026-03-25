@@ -48,6 +48,7 @@ function loadConfig(): Config {
     reconnectDelay: parseInt(process.env.RECONNECT_DELAY || '5000', 10),
     logLevel: (process.env.LOG_LEVEL as LogLevel) || 'info',
     logDir: process.env.LOG_DIR || './logs',
+    ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
   };
 
   logger.info('loadConfig', '配置加载完成', {
@@ -81,6 +82,9 @@ async function main(): Promise<void> {
     config,
     sendMessage: async (chatId: string, message: string) => {
       await feishuBot.sendMarkdown(chatId, message);
+    },
+    sendTemplateCard: async (chatId: string, templateId: string, variables: Record<string, unknown>) => {
+      await feishuBot.sendTemplateCard(chatId, templateId, variables);
     },
     lastSessionMap,
   });

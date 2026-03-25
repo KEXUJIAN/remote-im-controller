@@ -131,6 +131,7 @@ async function runTest(): Promise<void> {
       console.log(`Mock send to ${chatId}: ${text}`);
     },
     sendCard: async () => {},
+    sendTemplateCard: async () => {},
     registerCardHandler: (_handler) => {
       console.log('Card handler registered');
     },
