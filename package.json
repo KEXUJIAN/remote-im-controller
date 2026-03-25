@@ -12,6 +12,7 @@
     "test:parser": "tsx src/parser.ts test",
     "test:feishu": "tsx src/feishu_bot.ts test",
     "test:state": "tsx src/state_manager.ts test",
+    "test:core": "tsx src/core_processor.ts test",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

@@ -19,18 +19,17 @@ export interface CommandRouterDeps {
 
 /** 帮助文本 */
 const HELP_TEXT = `指令说明:
-
-/cmd help - 显示帮助
-/cmd list - 列出所有会话
-/cmd create <name> - 创建会话
-/cmd kill <name> - 终止会话
-/cmd status [name] - 查看会话状态
-/cmd <session> <command> - 在会话中执行命令
+help - 显示帮助
+list - 列出所有会话
+create <name> - 创建会话
+kill <name> - 终止会话
+status [name] - 查看会话状态
+<session> <command> - 在会话中执行命令
 
 示例:
-  /cmd create opencode
-  /cmd opencode ls -la
-  /cmd kill opencode`;
+  create opencode
+  opencode ls -la
+  kill opencode`;
 
 /**
  * 创建 CommandRouter 实例
@@ -47,7 +46,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return {
         success: false,
         message: '请指定会话名称，或先执行过某个会话操作',
-        hint: '用法: /cmd <session> <command>',
+        hint: '用法: <session> <command>',
       };
     }
 
@@ -55,7 +54,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return {
         success: false,
         message: '请指定要执行的命令',
-        hint: '用法: /cmd <session> <command>',
+        hint: '用法: <session> <command>',
       };
     }
 
@@ -106,7 +105,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return {
         success: false,
         message: '请指定会话名称',
-        hint: '用法: /cmd create <name>',
+        hint: '用法: create <name>',
       };
     }
 
@@ -139,7 +138,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       return {
         success: false,
         message: '请指定会话名称',
-        hint: '用法: /cmd kill <name>',
+        hint: '用法: kill <name>',
       };
     }
 
@@ -204,7 +203,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
     return {
       success: false,
       message: `未知指令: ${parsed.action}`,
-      hint: '发送 /cmd help 查看可用指令',
+      hint: '发送 help 查看可用指令',
     };
   }
 

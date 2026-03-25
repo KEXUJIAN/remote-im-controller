@@ -71,27 +71,8 @@ export function parseCommand(input: string): ParsedCommand | null {
     return null;
   }
 
-  // 不以 /cmd 开头
-  if (!trimmed.startsWith('/cmd ')) {
-    // 特殊情况: 只有 "/cmd" 的情况
-    if (trimmed === '/cmd') {
-      logger.warn('parse', 'Empty command after /cmd');
-      return null;
-    }
-    return null;
-  }
-
-  // 提取 /cmd 后面的内容
-  const body = trimmed.slice(5).trim();
-
-  // 只有 /cmd 没有后续内容
-  if (!body) {
-    logger.warn('parse', 'Empty command after /cmd');
-    return null;
-  }
-
   // 分词
-  const tokens = tokenize(body);
+  const tokens = tokenize(trimmed);
 
   if (tokens.length === 0) {
     logger.warn('parse', 'No tokens after tokenization');
@@ -105,7 +86,7 @@ export function parseCommand(input: string): ParsedCommand | null {
     return parseBuiltinAction(firstToken as CommandAction, tokens.slice(1));
   }
 
-  // 否则视为 exec 动作: /cmd <session> <command...>
+  // 否则视为 exec 动作: <session> <command...>
   return parseExecAction(tokens);
 }
 
