@@ -21,8 +21,74 @@ const logger = createLogger('core_processor');
 /** 超时时间：30 分钟 */
 const TIMEOUT_MS = 30 * 60 * 1000;
 
-/** 透传延迟时间：300ms */
-const PASS_THROUGH_DELAY_MS = 300;
+/** 初始延迟时间：500ms */
+const INITIAL_DELAY_MS = 500;
+
+/** 轮询结果 */
+interface PollResult {
+  /** 清洗后的输出 */
+  cleaned: string;
+  /** 是否超时 */
+  timeout: boolean;
+  /** 轮询次数 */
+  pollCount: number;
+  /** 总耗时 (ms) */
+  elapsed: number;
+}
+
+/**
+ * 轮询抓取屏幕直到稳定
+ * - 内容变化时刷新剩余超时时间（支持流式输出）
+ * - 连续 N 次内容相同视为稳定
+ */
+async function captureWithPoll(
+  tmuxManager: TmuxManager,
+  sessionName: string,
+  lines: number,
+  pollInterval: number,
+  pollTimeout: number,
+  stableCount: number
+): Promise<PollResult> {
+  const startTime = Date.now();
+  let lastHash = '';
+  let stableCountHit = 0;
+  let pollCount = 0;
+
+  await new Promise((r) => setTimeout(r, INITIAL_DELAY_MS));
+
+  while (true) {
+    pollCount++;
+    const result = await tmuxManager.captureScreen(sessionName, lines);
+
+    if (result.hash !== lastHash) {
+      lastHash = result.hash;
+      stableCountHit = 0;
+    } else {
+      stableCountHit++;
+      if (stableCountHit >= stableCount) {
+        return {
+          cleaned: result.cleaned,
+          timeout: false,
+          pollCount,
+          elapsed: Date.now() - startTime,
+        };
+      }
+    }
+
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= pollTimeout) {
+      logger.warn('captureWithPoll', `轮询超时`, { sessionName, pollCount, elapsed });
+      return {
+        cleaned: result.cleaned,
+        timeout: true,
+        pollCount,
+        elapsed,
+      };
+    }
+
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+}
 
 /** 核心处理器依赖 */
 export interface CoreProcessorDeps {
@@ -115,10 +181,22 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       // 发送命令到 tmux
       await tmuxManager.sendCommand(sessionName, text);
 
-      // 延迟后抓取屏幕
-      await new Promise((r) => setTimeout(r, PASS_THROUGH_DELAY_MS));
-      const result = await tmuxManager.captureScreen(sessionName, config.tmuxDefaultLines);
-      await sendMessage(chatId, result.cleaned);
+      // 轮询等待屏幕稳定
+      const result = await captureWithPoll(
+        tmuxManager,
+        sessionName,
+        config.tmuxDefaultLines,
+        config.pollInterval,
+        config.pollTimeout,
+        config.pollStableCount
+      );
+
+      let output = result.cleaned;
+      if (result.timeout) {
+        output = `⏱️ 等待超时 (${result.pollCount} 次轮询, ${result.elapsed}ms)\n\n${output}`;
+      }
+
+      await sendMessage(chatId, output);
     }
   }
 

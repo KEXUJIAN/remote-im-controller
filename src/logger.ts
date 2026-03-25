@@ -2,6 +2,8 @@
  * Remote IM Controller - 日志模块
  */
 
+import { appendFileSync, mkdirSync, existsSync } from 'fs';
+import { dirname, resolve } from 'path';
 import type { LogLevel, LogEntry } from './types.js';
 
 /** 日志级别优先级映射 */
@@ -11,6 +13,38 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   warn: 2,
   error: 3,
 };
+
+/** 文件日志配置 */
+export interface FileLogConfig {
+  /** 日志文件路径 */
+  path: string;
+  /** 是否同时输出到控制台 */
+  console: boolean;
+}
+
+/** 全局文件日志配置 */
+let fileConfig: FileLogConfig | null = null;
+
+/**
+ * 设置文件日志输出
+ * @param config 文件日志配置
+ */
+export function setupFileLogging(config: FileLogConfig): void {
+  const logDir = dirname(config.path);
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true });
+  }
+  fileConfig = config;
+}
+
+/**
+ * 获取日志文件路径（用于 CLI 和 dev 模式）
+ * @param mode 模式名称 (cli, dev)
+ * @param logDir 日志目录
+ */
+export function getLogFilePath(mode: string, logDir: string): string {
+  return resolve(logDir, `${mode}.log`);
+}
 
 /** 获取当前配置的日志级别 */
 function getConfiguredLevel(): LogLevel {
@@ -26,10 +60,21 @@ function shouldLog(level: LogLevel, configuredLevel: LogLevel): boolean {
   return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[configuredLevel];
 }
 
-/** 输出日志到 stdout */
+/** 输出日志 */
 function output(entry: LogEntry): void {
-  const json = JSON.stringify(entry);
-  process.stdout.write(json + '\n');
+  const json = JSON.stringify(entry) + '\n';
+
+  if (fileConfig) {
+    try {
+      appendFileSync(fileConfig.path, json, 'utf-8');
+    } catch {
+      // 忽略写入失败
+    }
+  }
+
+  if (!fileConfig || fileConfig.console) {
+    process.stdout.write(json);
+  }
 }
 
 function normalizeError(err: unknown): { name: string; message: string; stack: string } | undefined {

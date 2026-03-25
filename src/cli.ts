@@ -5,7 +5,7 @@
 import 'dotenv/config';
 import { mkdirSync } from 'fs';
 import { resolve } from 'path';
-import { createLogger } from './logger.js';
+import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';
 import { createStateManager } from './state_manager.js';
@@ -13,8 +13,11 @@ import { createCoreProcessor } from './core_processor.js';
 import { createLocalAdapter } from './adapters/local_adapter.js';
 import type { Config, LogLevel } from './types.js';
 
-process.env.TMUX_TMPDIR = resolve(process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs');
+const logDir = resolve(process.env.LOG_DIR || './logs');
+process.env.TMUX_TMPDIR = resolve(process.env.TMUX_TMPDIR || logDir);
 mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
+
+setupFileLogging({ path: getLogFilePath('cli', logDir), console: false });
 
 const logger = createLogger('cli');
 

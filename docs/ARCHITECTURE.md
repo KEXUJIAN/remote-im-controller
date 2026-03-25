@@ -23,21 +23,31 @@
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │                    Node.js 进程                             │  │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │  │
-│  │  │  feishu_bot │  │   app.js    │  │tmux_manager │        │  │
-│  │  │  (WSS 连接)  │◄─┤  (调度器)    │◄─┤  (终端控制)  │        │  │
+│  │  │feishu_bot   │  │feishu_      │  │  adapters   │        │  │
+│  │  │(事件监听)    │◄─┤adapter      │◄─┤  (接口)     │        │  │
 │  │  └──────┬──────┘  └──────┬──────┘  └─────────────┘        │  │
 │  │         │                │                                  │  │
 │  │         │         ┌──────┴──────┐                          │  │
 │  │         │         │             │                          │  │
 │  │         │    ┌────┴────┐  ┌─────┴─────┐                    │  │
-│  │         │    │ parser  │  │  command  │                    │  │
-│  │         │    │(文本清洗)│  │  _parser  │                    │  │
-│  │         │    └─────────┘  └───────────┘                    │  │
-│  │         │                                                   │  │
-│  │         ▼                                                   │  │
+│  │         │    │  core   │  │   state   │                    │  │
+│  │         │    │processor│  │ _manager  │                    │  │
+│  │         │    └────┬────┘  └───────────┘                    │  │
+│  │         │         │                                        │  │
+│  │         │    ┌────┴────┐                                   │  │
+│  │         │    │         │                                   │  │
+│  │         │    ▼         ▼                                   │  │
+│  │         │ command_  tmux_                                 │  │
+│  │         │ router    manager                               │  │
+│  │         │    │         │                                   │  │
+│  │         │    ▼         │                                   │  │
+│  │         │ command_     │                                   │  │
+│  │         │ parser       │                                   │  │
+│  │         │              │                                   │  │
+│  │         ▼              ▼                                   │  │
 │  │  ┌──────────────────────────────────────────────────────┐  │  │
 │  │  │                    logger                            │  │  │
-│  │  │              (详细堆栈日志记录)                         │  │  │
+│  │  │              (文件 + 控制台日志)                        │  │  │
 │  │  └──────────────────────────────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                              │                                   │
@@ -60,173 +70,139 @@
 | 模块 | 文件 | 职责 |
 |------|------|------|
 | **types** | `src/types.ts` | 类型定义和接口 |
+| **logger** | `src/logger.ts` | 日志记录（文件 + 控制台） |
 | **tmux_manager** | `src/tmux_manager.ts` | 通过 child_process 与 tmux 交互 |
 | **parser** | `src/parser.ts` | 清洗终端输出，去除 ANSI 代码 |
-| **command_parser** | `src/command_parser.ts` | 解析飞书指令 |
+| **command_parser** | `src/command_parser.ts` | 解析用户指令 |
 | **command_router** | `src/command_router.ts` | 路由指令到处理器 |
+| **state_manager** | `src/state_manager.ts` | 状态机管理（COMMAND/SESSION 模式） |
+| **core_processor** | `src/core_processor.ts` | 核心处理器，统一消息路由 |
+| **card_builder** | `src/card_builder.ts` | 飞书卡片构建器 |
 | **feishu_bot** | `src/feishu_bot.ts` | 飞书 WSS 连接和消息发送 |
-| **logger** | `src/logger.ts` | 日志记录（详细堆栈） |
-| **app** | `src/app.ts` | 主入口，组合所有模块 |
+| **adapters/adapter** | `src/adapters/adapter.ts` | 适配器接口定义 |
+| **adapters/feishu_adapter** | `src/adapters/feishu_adapter.ts` | 飞书适配器实现 |
+| **adapters/local_adapter** | `src/adapters/local_adapter.ts` | 本地 CLI 适配器 |
+| **app** | `src/app.ts` | 主入口（飞书模式） |
+| **cli** | `src/cli.ts` | CLI 入口（本地测试） |
 
 ---
 
-## 三、数据流
+## 三、状态机设计
 
-### 指令执行流程
-
-```
-用户输入: /cmd opencode ls -la
-    │
-    ▼
-飞书 WSS 推送消息事件
-    │
-    ▼
-feishu_bot.ts 接收事件
-    │
-    ├── 鉴权检查 (ADMIN_OPEN_ID)
-    │       └── 不通过 → 丢弃
-    │
-    ▼
-command_parser.ts 解析指令
-    │
-    ├── { action: 'exec', session: 'opencode', command: 'ls -la' }
-    │
-    ▼
-command_router.ts 路由到 exec 处理器
-    │
-    ▼
-tmux_manager.ts 执行命令
-    │
-    ├── tmux send-keys -t opencode "ls -la" C-m
-    │
-    ▼
-状态轮询开始 (setInterval 3s)
-    │
-    ├── tmux capture-pane -p -t opencode
-    │
-    ├── parser.ts 清洗输出
-    │       ├── strip-ansi 去除颜色
-    │       ├── 过滤空行和提示符
-    │       └── 截取最后 N 行
-    │
-    ├── 检测输出变化 (哈希比对)
-    │       └── 变化 → 推送
-    │
-    ▼
-feishu_bot.ts 发送消息卡片
-    │
-    ▼
-用户收到终端输出
-```
-
-### 状态轮询机制
+### 模式切换
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    状态轮询流程                               │
+│                    状态机模式切换                              │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  命令执行后                                                  │
+│  COMMAND 模式（默认）                                        │
 │       │                                                     │
+│       │  点击"进入会话"按钮                                   │
+│       │  或 /click enter <session>                          │
 │       ▼                                                     │
-│  开始轮询 (每 3 秒)                                          │
+│  SESSION 模式                                                │
 │       │                                                     │
+│       │  点击机器人菜单"退出会话模式"                          │
+│       │  或 /menu exit                                       │
+│       │  或 30 分钟无操作                                     │
 │       ▼                                                     │
-│  captureScreen() ────┬─── 哈希计算                          │
-│       │              │                                      │
-│       │              ▼                                      │
-│       │         与上次哈希比较                               │
-│       │              │                                      │
-│       │         ┌────┴────┐                                 │
-│       │         │         │                                 │
-│       │      相同       不同                                 │
-│       │         │         │                                 │
-│       │         │         ▼                                 │
-│       │         │    检测提示符                              │
-│       │         │    (以 $ 或 # 结尾)                       │
-│       │         │         │                                 │
-│       │         │    ┌────┴────┐                            │
-│       │         │    │         │                            │
-│       │         │ 有提示符  无提示符                          │
-│       │         │    │         │                            │
-│       │         │    ▼         ▼                            │
-│       │         │  推送     更新哈希                         │
-│       │         │  清除轮询   继续轮询                        │
-│       │         │    │                                      │
-│       │         │    ▼                                      │
-│       │         │  结束                                     │
-│       │         │                                           │
-│       │      继续轮询                                        │
-│       │                                                      │
-│       ▼                                                      │
-│  超时检测 (60s 无变化)                                        │
-│       │                                                      │
-│       ▼                                                      │
-│  强制推送最后一次输出                                         │
+│  COMMAND 模式                                                │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 消息路由
+
+```
+用户消息
+    │
+    ▼
+CoreProcessor.process()
+    │
+    ├── TEXT 消息
+    │       │
+    │       ├── COMMAND 模式 → CommandRouter → 执行指令
+    │       │
+    │       └── SESSION 模式 → TmuxManager → 透传命令
+    │                                    → 轮询等待稳定
+    │                                    → 返回屏幕输出
+    │
+    ├── CARD_EVENT 消息
+    │       │
+    │       ├── enter → 切换到 SESSION 模式
+    │       └── kill  → 终止会话
+    │
+    └── MENU_EVENT 消息
+            │
+            └── exit_session_mode → 退出 SESSION 模式
+```
+
 ---
 
-## 四、错误处理策略
+## 四、SESSION 模式轮询机制
 
-### 分层错误处理
+SESSION 模式下，命令发送后使用轮询等待屏幕稳定：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       错误处理层级                            │
+│                    轮询等待流程                               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Level 1: 模块内部                                          │
-│       ├── 捕获并记录详细堆栈                                 │
-│       ├── 转换为标准错误对象                                 │
-│       └── 向上抛出                                          │
-│                                                             │
-│  Level 2: 模块边界                                          │
-│       ├── 包装错误上下文                                    │
-│       ├── 记录模块级日志                                    │
-│       └── 返回 Result 对象                                  │
-│                                                             │
-│  Level 3: 应用层 (app.ts)                                    │
-│       ├── 全局异常捕获                                      │
-│       ├── 决定恢复或崩溃                                    │
-│       └── 推送错误通知到飞书                                │
-│                                                             │
-│  Level 4: 进程层                                            │
-│       ├── 未捕获异常 → 记录 → let it crash                  │
-│       ├── SIGINT/SIGTERM → 优雅退出                         │
-│       └── PM2 自动重启                                      │
+│  发送命令到 tmux                                             │
+│       │                                                     │
+│       ▼                                                     │
+│  初始延迟 (500ms)                                            │
+│       │                                                     │
+│       ▼                                                     │
+│  抓取屏幕 ────┬─── 计算 hash                                 │
+│       │       │                                             │
+│       │       ▼                                             │
+│       │   与上次 hash 比较                                   │
+│       │       │                                             │
+│       │   ┌───┴───┐                                         │
+│       │   │       │                                         │
+│       │  不同    相同                                        │
+│       │   │       │                                         │
+│       │   ▼       ▼                                         │
+│       │ 重置计数  增加计数                                    │
+│       │   │       │                                         │
+│       │   │   达到稳定阈值?                                   │
+│       │   │       │                                         │
+│       │   │   ┌───┴───┐                                     │
+│       │   │   │       │                                     │
+│       │   │  是      否                                     │
+│       │   │   │       │                                     │
+│       │   │   ▼       ▼                                     │
+│       │   │ 返回    继续轮询                                  │
+│       │   │                                                 │
+│       │   └── 检查超时 ─── 超时? → 返回当前内容               │
+│       │                                                     │
+│       └── 等待 POLL_INTERVAL 后继续                          │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 日志格式
-
-```javascript
-// 错误日志示例
-{
-  "timestamp": "2026-03-23T12:00:00.000Z",
-  "level": "error",
-  "module": "tmux_manager",
-  "action": "sendCommand",
-  "session": "opencode",
-  "command": "ls -la",
-  "error": {
-    "name": "SessionNotFoundError",
-    "message": "tmux session 'opencode' not found",
-    "stack": "Error: tmux session 'opencode' not found\n    at TmuxManager.sendCommand (file:///app/src/tmux_manager.js:45:15)\n    ..."
-  },
-  "context": {
-    "availableSessions": ["myproject"],
-    "exitCode": 1
-  }
-}
-```
+**关键特性**：
+- 内容变化时持续等待（支持流式输出）
+- 连续 N 次 hash 相同视为稳定
+- 超时后返回当前内容（不丢失）
 
 ---
 
-## 五、配置管理
+## 五、日志系统
+
+### 日志输出策略
+
+| 模式 | 控制台 | 文件 |
+|------|--------|------|
+| `npm run local` (CLI) | ❌ 干净 | ✅ `./logs/cli.log` |
+| `npm run dev` (开发) | ✅ 显示 | ✅ `./logs/dev.log` |
+| `npm run start` / PM2 | ✅ PM2 管理 | ✅ PM2 管理 |
+
+---
+
+## 六、配置管理
 
 ### 环境变量
 
@@ -237,9 +213,9 @@ FEISHU_APP_SECRET=xxx          # 应用密钥
 ADMIN_OPEN_ID=ou_xxx           # 管理员 Open ID
 
 # tmux 配置
-TMUX_DEFAULT_LINES=50          # 默认抓取行数
-TMUX_DEBUG=true                # 开启 tmux 详细日志（日志写入 logs/ 目录）
-TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
+TMUX_DEFAULT_LINES=200         # 默认抓取行数（支持长输出）
+TMUX_DEBUG=true                # 开启 tmux 详细日志
+TMUX_TMPDIR=./logs             # tmux 临时文件目录
 
 # 轮询配置
 POLL_INTERVAL=3000             # 轮询间隔 (ms)
@@ -252,15 +228,13 @@ RECONNECT_DELAY=5000           # 重连延迟 (ms)
 
 # 日志配置
 LOG_LEVEL=debug                # 日志级别
-LOG_DIR=./logs                 # 日志目录 (tmux 临时文件也会放这里)
-
-# tmux 配置 (可选)
-TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
+LOG_DIR=./logs                 # 日志目录
+NODE_ENV=development           # development 时启用文件日志
 ```
 
 ---
 
-## 六、优雅退出
+## 七、优雅退出
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -270,16 +244,10 @@ TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
 │  收到 SIGINT/SIGTERM                                        │
 │       │                                                     │
 │       ▼                                                     │
-│  记录退出信号                                               │
-│       │                                                     │
-│       ▼                                                     │
-│  清除所有轮询定时器                                         │
+│  停止适配器                                                  │
 │       │                                                     │
 │       ▼                                                     │
 │  关闭飞书 WSS 连接                                          │
-│       │                                                     │
-│       ▼                                                     │
-│  等待进行中的操作完成 (最多 10s)                            │
 │       │                                                     │
 │       ▼                                                     │
 │  记录退出日志                                               │
@@ -292,54 +260,57 @@ TMUX_TMPDIR=./logs             # tmux 临时文件目录，默认使用 LOG_DIR
 
 ---
 
-## 七、测试策略
+## 八、依赖关系
 
-### 模块独立测试
-
-每个模块提供独立的测试入口，可通过 CLI 单独调用：
-
-```bash
-# 测试 tmux_manager (创建会话后等待 3 秒，可在另一终端 attach 观察)
-tsx src/tmux_manager.ts test
-
-# 测试 parser
-tsx src/parser.ts test
-
-# 测试 feishu_bot (模拟模式)
-tsx src/feishu_bot.ts test --mock
 ```
+app.ts (飞书模式)
+  ├── feishu_bot.ts
+  │     └── @larksuiteoapi/node-sdk
+  ├── feishu_adapter.ts
+  │     └── adapter.ts (接口)
+  ├── core_processor.ts
+  │     ├── state_manager.ts
+  │     ├── command_router.ts
+  │     │     └── command_parser.ts
+  │     └── tmux_manager.ts
+  ├── card_builder.ts
+  └── logger.ts
 
-### tmux 测试观察
-
-运行 `npm run test:tmux` 时：
-- 步骤 3 创建会话后等待 3 秒，可在另一终端运行 `tmux attach -t <session_name>` 观察
-- 步骤 7 终止会话前等待 3 秒，便于观察会话状态
-
-### 集成测试
-
-```bash
-# 完整流程测试
-tsx src/app.ts test
-
-# 或使用 PM2
-npm run build && pm2 start ecosystem.config.cjs --env test
+cli.ts (本地测试)
+  ├── local_adapter.ts
+  │     └── adapter.ts (接口)
+  ├── core_processor.ts
+  └── logger.ts
 ```
 
 ---
 
-## 八、依赖关系
+## 九、测试策略
 
+### 模块独立测试
+
+```bash
+# 测试各模块
+npm run test:tmux        # tmux 管理器
+npm run test:parser      # 文本解析
+npm run test:feishu      # 飞书模块
+npm run test:state       # 状态机
+npm run test:core        # 核心处理器
+
+# 本地 CLI 测试
+npm run local
 ```
-app.ts
-  ├── feishu_bot.ts
-  │     └── @larksuiteoapi/node-sdk
-  ├── command_router.ts
-  │     └── command_parser.ts
-  ├── tmux_manager.ts
-  │     └── child_process (built-in)
-  ├── parser.ts
-  │     └── strip-ansi
-  ├── logger.ts
-  │     └── console (built-in)
-  └── types.ts
+
+### 运行模式
+
+```bash
+# 开发模式（热重载）
+npm run dev
+
+# 生产模式
+npm run build
+npm run start
+
+# PM2 部署
+pm2 start ecosystem.config.cjs
 ```

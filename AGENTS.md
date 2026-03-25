@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-通过飞书 WebSocket 长连接远程控制 WSL 终端的 Node.js 守护进程。
+通过飞书 WebSocket 长连接远程控制 WSL 终端的 Node.js 守护进程。支持 COMMAND/SESSION 双模式，飞书卡片交互，本地 CLI 测试。
 
 ## 构建与测试命令
 
@@ -16,6 +16,7 @@ npm run typecheck      # 仅类型检查，不生成文件
 ```bash
 npm run dev            # 开发模式（tsx watch 热重载）
 npm run start          # 运行编译后的代码
+npm run local          # 本地 CLI 测试入口
 ```
 
 ### 测试（模块内联测试）
@@ -25,6 +26,8 @@ npm run start          # 运行编译后的代码
 npm run test:tmux      # 测试 tmux 控制模块
 npm run test:parser    # 测试文本解析模块
 npm run test:feishu    # 测试飞书通信模块
+npm run test:state     # 测试状态机模块
+npm run test:core      # 测试核心处理器
 ```
 
 **运行单个测试**：直接执行对应命令，测试逻辑在模块末尾的 `if (process.argv[2] === 'test')` 块中。
@@ -33,6 +36,22 @@ npm run test:feishu    # 测试飞书通信模块
 ```bash
 pm2 start ecosystem.config.cjs    # 使用 PM2 启动
 pm2 logs remote-im-controller     # 查看日志
+```
+
+## 日志系统
+
+### 日志输出策略
+
+| 运行模式 | 控制台 | 文件 |
+|----------|--------|------|
+| `npm run local` (CLI) | ❌ 干净 | ✅ `./logs/cli.log` |
+| `npm run dev` (开发) | ✅ 显示 | ✅ `./logs/dev.log` |
+| `npm run start` / PM2 | ✅ PM2 管理 | ✅ PM2 管理 |
+
+### 启用开发模式文件日志
+
+```bash
+NODE_ENV=development npm run start
 ```
 
 ## 代码风格规范
@@ -190,28 +209,80 @@ export function tokenize(body: string): string[] { /* ... */ }
 
 ```
 src/
-├── app.ts              # 主入口 - 消息处理、轮询、优雅退出
+├── app.ts              # 主入口（飞书模式）
+├── cli.ts              # 本地 CLI 入口
 ├── types.ts            # 类型定义、自定义错误类
-├── logger.ts           # 日志模块
+├── logger.ts           # 日志模块（文件 + 控制台）
+├── state_manager.ts    # 状态机模块（COMMAND/SESSION 模式）
+├── core_processor.ts   # 核心处理器（消息路由 + 轮询等待）
 ├── tmux_manager.ts     # tmux 控制模块
 ├── parser.ts           # 文本清洗模块
 ├── command_parser.ts   # 指令解析模块
 ├── command_router.ts   # 指令路由模块
-└── feishu_bot.ts       # 飞书通信模块
+├── card_builder.ts     # 飞书卡片构建器
+├── feishu_bot.ts       # 飞书通信模块
+└── adapters/
+    ├── adapter.ts          # 适配器接口
+    ├── feishu_adapter.ts   # 飞书适配器
+    └── local_adapter.ts    # 本地适配器（CLI）
 ```
 
 ## 环境变量
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `FEISHU_APP_ID` | 是 | 飞书应用 ID |
-| `FEISHU_APP_SECRET` | 是 | 飞书应用密钥 |
-| `ADMIN_OPEN_ID` | 是 | 管理员 Open ID |
-| `LOG_LEVEL` | 否 | 日志级别，默认 `info` |
-| `LOG_DIR` | 否 | 日志目录，默认 `./logs` |
-| `TMUX_DEBUG` | 否 | tmux 详细日志，默认 `false` |
-| `POLL_INTERVAL` | 否 | 轮询间隔 ms，默认 3000 |
-| `POLL_TIMEOUT` | 否 | 轮询超时 ms，默认 60000 |
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `FEISHU_APP_ID` | 是 | - | 飞书应用 ID |
+| `FEISHU_APP_SECRET` | 是 | - | 飞书应用密钥 |
+| `ADMIN_OPEN_ID` | 是 | - | 管理员 Open ID |
+| `LOG_LEVEL` | 否 | `info` | 日志级别 |
+| `LOG_DIR` | 否 | `./logs` | 日志目录 |
+| `TMUX_DEFAULT_LINES` | 否 | `200` | tmux 抓取行数 |
+| `TMUX_DEBUG` | 否 | `false` | tmux 详细日志 |
+| `TMUX_TMPDIR` | 否 | `$LOG_DIR` | tmux 临时文件目录 |
+| `POLL_INTERVAL` | 否 | `3000` | 轮询间隔 (ms) |
+| `POLL_TIMEOUT` | 否 | `60000` | 轮询超时 (ms) |
+| `POLL_STABLE_COUNT` | 否 | `2` | 稳定计数 |
+| `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
+| `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
+| `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
+
+## SESSION 模式轮询机制
+
+SESSION 模式下命令发送后，使用轮询等待屏幕稳定：
+
+1. **初始延迟**：500ms 后开始抓取
+2. **轮询间隔**：每 `POLL_INTERVAL` ms 抓取一次
+3. **稳定判定**：连续 `POLL_STABLE_COUNT` 次 hash 相同
+4. **超时保护**：最长等待 `POLL_TIMEOUT` ms
+5. **流式支持**：内容变化时持续等待
+
+适用于：
+- LLM 流式响应（如 `opencode run "你好"`）
+- 长时间运行的命令
+- 实时日志输出
+
+## 本地 CLI 测试
+
+```bash
+npm run local
+```
+
+### 可用指令
+
+| 指令 | 说明 |
+|------|------|
+| `help` | 显示帮助 |
+| `list` | 列出会话 |
+| `create <name>` | 创建会话 |
+| `kill <name>` | 终止会话 |
+| `<session> <cmd>` | 在会话中执行命令 |
+| `/click enter <session>` | 模拟卡片"进入"按钮 |
+| `/click kill <session>` | 模拟卡片"关闭"按钮 |
+| `/menu exit` | 模拟菜单"退出会话模式" |
+
+### 退出 CLI
+
+`Ctrl+C`
 
 ## 常见任务
 
@@ -235,4 +306,14 @@ src/
 ```bash
 LOG_LEVEL=debug npm run dev
 TMUX_DEBUG=true npm run test:tmux
+```
+
+### 查看日志文件
+
+```bash
+# CLI 模式日志
+cat ./logs/cli.log
+
+# 开发模式日志
+cat ./logs/dev.log
 ```
