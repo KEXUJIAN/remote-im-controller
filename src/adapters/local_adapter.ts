@@ -47,7 +47,7 @@ function parseInput(input: string): UnifiedMessage {
   return {
     type: 'TEXT',
     chatId,
-    payload: input,
+    payload: { text: input },
     timestamp,
   };
 }
@@ -115,7 +115,8 @@ if (process.argv[2] === 'test') {
     const result = parseInput('hello world');
     console.assert(result.type === 'TEXT', 'TEXT: type should be TEXT');
     console.assert(result.chatId === 'local-cli', 'TEXT: chatId should be local-cli');
-    console.assert(result.payload === 'hello world', 'TEXT: payload should match input');
+    const textPayload = result.payload as { text: string };
+    console.assert(textPayload.text === 'hello world', 'TEXT: payload.text should match input');
     console.log('✓ TEXT 消息解析');
   }
 
@@ -123,7 +124,8 @@ if (process.argv[2] === 'test') {
   {
     const result = parseInput('');
     console.assert(result.type === 'TEXT', 'EMPTY: type should be TEXT');
-    console.assert(result.payload === '', 'EMPTY: payload should be empty string');
+    const textPayload = result.payload as { text: string };
+    console.assert(textPayload.text === '', 'EMPTY: payload.text should be empty string');
     console.log('✓ 空输入解析');
   }
 
@@ -169,7 +171,8 @@ if (process.argv[2] === 'test') {
   {
     const result = parseInput('/click enterx test');
     console.assert(result.type === 'TEXT', 'PREFIX_MISMATCH: type should be TEXT');
-    console.assert(result.payload === '/click enterx test', 'PREFIX_MISMATCH: payload should be original input');
+    const textPayload = result.payload as { text: string };
+    console.assert(textPayload.text === '/click enterx test', 'PREFIX_MISMATCH: payload.text should be original input');
     console.log('✓ 类似前缀不匹配');
   }
 
@@ -178,6 +181,9 @@ if (process.argv[2] === 'test') {
     const before = Date.now();
     const result = parseInput('test');
     const after = Date.now();
+    console.assert(result.type === 'TEXT', 'TIMESTAMP: type should be TEXT');
+    const textPayload = result.payload as { text: string };
+    console.assert(textPayload.text === 'test', 'TIMESTAMP: payload.text should match input');
     console.assert(result.timestamp >= before, 'TIMESTAMP: timestamp should be >= before');
     console.assert(result.timestamp <= after, 'TIMESTAMP: timestamp should be <= after');
     console.log('✓ 时间戳正确');
