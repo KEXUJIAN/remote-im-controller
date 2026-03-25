@@ -145,14 +145,12 @@ export function createFeishuBot(config: Config): FeishuBot {
       },
       'card.action.trigger': async (data: CardActionTriggerEvent) => {
         try {
-          logger.debug('card', '收到卡片回调', { keys: Object.keys(data), data: JSON.stringify(data).slice(0, 500) });
-
           if (!state.cardHandler) {
             logger.warn('card', '卡片事件处理器未注册');
             return { toast: { type: 'error', content: '处理器未就绪' } };
           }
 
-          const operatorOpenId = data.event?.operator?.open_id;
+          const operatorOpenId = data.operator?.open_id;
           if (operatorOpenId !== config.adminOpenId) {
             logger.debug('auth', '非管理员卡片事件，已丢弃');
             return { toast: { type: 'error', content: '无权限' } };

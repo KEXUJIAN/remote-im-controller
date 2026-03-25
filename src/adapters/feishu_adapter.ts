@@ -53,18 +53,18 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       return Promise.resolve({ toast: { type: 'error', content: '处理器未就绪' } });
     }
 
-    const { action, context } = data.event;
-    const value = typeof action.value === 'string' 
-      ? JSON.parse(action.value) 
+    const { action, context } = data;
+    const value = typeof action.value === 'string'
+      ? JSON.parse(action.value)
       : action.value;
 
     const message: UnifiedMessage = {
       type: 'CARD_EVENT',
-      chatId: context.open_chat_id || '',
+      chatId: context?.open_chat_id || '',
       payload: {
         action: value.action,
         sessionName: value.session,
-        messageId: context.open_message_id,
+        messageId: context?.open_message_id,
       } as CardEventPayload,
       timestamp: Date.now(),
     };

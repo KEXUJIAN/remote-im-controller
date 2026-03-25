@@ -258,19 +258,29 @@ export interface MenuEventPayload {
   eventKey: string;
 }
 
-/** 飞书卡片触发事件 */
+/** 飞书卡片触发事件（新版 SDK 结构） */
 export interface CardActionTriggerEvent {
-  event: {
-    operator: { open_id: string };
-    token: string;
-    action: {
-      value: { action: 'enter' | 'kill'; session: string } | string;
-      tag: string;
-    };
-    context: {
-      open_message_id?: string;
-      open_chat_id?: string;
-    };
+  schema: string;
+  event_id: string;
+  token: string;
+  create_time: string;
+  event_type: string;
+  tenant_key: string;
+  app_id: string;
+  operator: {
+    tenant_key: string;
+    user_id: string;
+    open_id: string;
+    union_id: string;
+  };
+  action: {
+    value: { action: 'enter' | 'kill'; session: string } | string;
+    tag: string;
+  };
+  host: string;
+  context: {
+    open_message_id?: string;
+    open_chat_id?: string;
   };
 }
 
