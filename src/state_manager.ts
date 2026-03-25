@@ -24,6 +24,8 @@ export interface StateManager {
   checkTimeout(chatId: string, timeoutMs: number): boolean;
   /** 重置状态为 COMMAND 模式 */
   resetState(chatId: string): void;
+  /** 获取所有状态的 chatId 迭代器 */
+  getAllStates(): IterableIterator<string>;
 }
 
 /**
@@ -82,6 +84,10 @@ export function createStateManager(): StateManager {
       };
       states.set(chatId, newState);
       logger.info('resetState', `状态重置: ${chatId}`);
+    },
+
+    getAllStates(): IterableIterator<string> {
+      return states.keys();
     },
   };
 }

@@ -270,11 +270,25 @@ export interface CardActionTriggerEvent {
   };
 }
 
-/** 飞书菜单事件 */
+/** 飞书菜单事件（SDK 原生格式） */
 export interface BotMenuEvent {
-  event: {
-    operator: { operator_id: { open_id: string } };
-    event_key: string;
-    timestamp: number;
+  event_id?: string;
+  token?: string;
+  create_time?: string;
+  event_type?: string;
+  tenant_key?: string;
+  ts?: string;
+  uuid?: string;
+  type?: string;
+  app_id?: string;
+  operator?: {
+    operator_name?: string;
+    operator_id?: {
+      open_id?: string;
+      user_id?: string;
+      union_id?: string;
+    };
   };
+  event_key?: string;
+  timestamp?: number;
 }

@@ -8,11 +8,21 @@ import type {
   FeishuMessageEvent,
   FeishuCard,
   FeishuMessageContent,
+  CardActionTriggerEvent,
+  BotMenuEvent,
 } from './types.js';
 import { ReconnectLimitExceededError } from './types.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('feishu_bot');
+
+/** 卡片事件处理响应 */
+export interface CardHandlerResponse {
+  toast?: {
+    type: 'info' | 'success' | 'error';
+    content: string;
+  };
+}
 
 /** 飞书机器人接口 */
 export interface FeishuBot {
@@ -24,6 +34,10 @@ export interface FeishuBot {
   sendMarkdown(chatId: string, text: string, title?: string): Promise<void>;
   /** 发送自定义卡片消息 */
   sendCard(chatId: string, card: FeishuCard): Promise<void>;
+  /** 注册卡片事件处理器 */
+  registerCardHandler(handler: (data: CardActionTriggerEvent) => Promise<CardHandlerResponse>): void;
+  /** 注册菜单事件处理器 */
+  registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void;
 }
 
 /** 内部状态 */
@@ -33,6 +47,8 @@ interface BotState {
   reconnectAttempts: number;
   reconnectTimer: NodeJS.Timeout | null;
   isRunning: boolean;
+  cardHandler: ((data: CardActionTriggerEvent) => Promise<CardHandlerResponse>) | null;
+  menuHandler: ((data: BotMenuEvent) => Promise<void>) | null;
 }
 
 /**
@@ -50,6 +66,8 @@ export function createFeishuBot(config: Config): FeishuBot {
     reconnectAttempts: 0,
     reconnectTimer: null,
     isRunning: false,
+    cardHandler: null,
+    menuHandler: null,
   };
 
   /**
@@ -95,12 +113,10 @@ export function createFeishuBot(config: Config): FeishuBot {
     onMessage: (event: FeishuMessageEvent) => Promise<void>
   ): Promise<void> {
     const eventDispatcher = new lark.EventDispatcher({}).register({
-      // 消息接收事件
       'im.message.receive_v1': async (data: FeishuMessageEvent) => {
         try {
           const event = data;
           
-          // 验证发送者身份
           const senderOpenId = event.sender?.sender_id?.open_id;
           if (senderOpenId !== config.adminOpenId) {
             logger.debug('auth', '非管理员消息，已丢弃', {
@@ -119,6 +135,43 @@ export function createFeishuBot(config: Config): FeishuBot {
           await onMessage(event);
         } catch (error) {
           logger.error('message', '消息处理失败', error);
+        }
+      },
+      'card.action.trigger': async (data: CardActionTriggerEvent) => {
+        try {
+          if (!state.cardHandler) {
+            logger.warn('card', '卡片事件处理器未注册');
+            return { toast: { type: 'error', content: '处理器未就绪' } };
+          }
+          
+          const operatorOpenId = data.event.operator?.open_id;
+          if (operatorOpenId !== config.adminOpenId) {
+            logger.debug('auth', '非管理员卡片事件，已丢弃');
+            return { toast: { type: 'error', content: '无权限' } };
+          }
+
+          return await state.cardHandler(data);
+        } catch (error) {
+          logger.error('card', '卡片事件处理失败', error);
+          return { toast: { type: 'error', content: '处理失败' } };
+        }
+      },
+      'application.bot.menu_v6': async (data: BotMenuEvent) => {
+        try {
+          if (!state.menuHandler) {
+            logger.warn('menu', '菜单事件处理器未注册');
+            return;
+          }
+          
+          const operatorOpenId = data.operator?.operator_id?.open_id;
+          if (operatorOpenId !== config.adminOpenId) {
+            logger.debug('auth', '非管理员菜单事件，已丢弃');
+            return;
+          }
+
+          await state.menuHandler(data);
+        } catch (error) {
+          logger.error('menu', '菜单事件处理失败', error);
         }
       },
     });
@@ -231,6 +284,16 @@ export function createFeishuBot(config: Config): FeishuBot {
         logger.error('send', '发送消息失败', error, { chatId });
         throw error;
       }
+    },
+
+    registerCardHandler(handler: (data: CardActionTriggerEvent) => Promise<CardHandlerResponse>): void {
+      state.cardHandler = handler;
+      logger.debug('register', '卡片事件处理器已注册');
+    },
+
+    registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void {
+      state.menuHandler = handler;
+      logger.debug('register', '菜单事件处理器已注册');
     },
   };
 }

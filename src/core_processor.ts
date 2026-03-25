@@ -248,6 +248,9 @@ if (process.argv[2] === 'test') {
     resetState(chatId: string) {
       mockStateMap.set(chatId, { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() });
     },
+    getAllStates() {
+      return mockStateMap.keys();
+    },
   };
 
   const sentMessages: SentMessage[] = [];
