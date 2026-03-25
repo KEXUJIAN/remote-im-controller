@@ -205,3 +205,76 @@ export class TmuxNotAvailableError extends Error {
     this.name = 'TmuxNotAvailableError';
   }
 }
+
+// ============ 状态机 ============
+
+/** 聊天模式 */
+export type ChatMode = 'COMMAND' | 'SESSION';
+
+/** 聊天状态 */
+export interface ChatState {
+  /** 当前模式 */
+  mode: ChatMode;
+  /** 活跃会话名 */
+  activeSession: string | null;
+  /** 最后活动时间戳 */
+  lastActivityTime: number;
+}
+
+// ============ 统一消息接口 ============
+
+/** 消息类型 */
+export type MessageType = 'TEXT' | 'CARD_EVENT' | 'MENU_EVENT';
+
+/** 统一消息接口 */
+export interface UnifiedMessage {
+  /** 消息类型 */
+  type: MessageType;
+  /** 聊天 ID */
+  chatId: string;
+  /** 消息载荷 */
+  payload: unknown;
+  /** 时间戳 */
+  timestamp: number;
+}
+
+/** 卡片事件载荷 */
+export interface CardEventPayload {
+  /** 动作类型 */
+  action: 'enter' | 'kill';
+  /** 会话名 */
+  sessionName: string;
+  /** 消息 ID（用于更新卡片） */
+  messageId?: string;
+}
+
+/** 菜单事件载荷 */
+export interface MenuEventPayload {
+  /** 事件键 */
+  eventKey: string;
+}
+
+/** 飞书卡片触发事件 */
+export interface CardActionTriggerEvent {
+  event: {
+    operator: { open_id: string };
+    token: string;
+    action: {
+      value: { action: 'enter' | 'kill'; session: string } | string;
+      tag: string;
+    };
+    context: {
+      open_message_id?: string;
+      open_chat_id?: string;
+    };
+  };
+}
+
+/** 飞书菜单事件 */
+export interface BotMenuEvent {
+  event: {
+    operator: { operator_id: { open_id: string } };
+    event_key: string;
+    timestamp: number;
+  };
+}

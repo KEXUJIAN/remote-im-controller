@@ -11,6 +11,7 @@
     "test:tmux": "tsx src/tmux_manager.ts test",
     "test:parser": "tsx src/parser.ts test",
     "test:feishu": "tsx src/feishu_bot.ts test",
+    "test:state": "tsx src/state_manager.ts test",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
