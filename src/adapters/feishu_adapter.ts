@@ -36,7 +36,8 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
     const content: FeishuMessageContent = JSON.parse(event.message.content);
     const message: UnifiedMessage = {
       type: 'TEXT',
-      chatId: event.sender?.sender_id?.open_id || '',
+      userId: event.sender?.sender_id?.open_id || '',
+      chatId: event.message.chat_id,
       payload: {
         text: content.text,
         messageId: event.message.message_id,
@@ -60,7 +61,8 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
 
     const message: UnifiedMessage = {
       type: 'CARD_EVENT',
-      chatId: data.operator.open_id,
+      userId: data.operator.open_id,
+      chatId: context?.open_chat_id || '',
       payload: {
         action: value.action,
         sessionName: value.session,
@@ -82,10 +84,11 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       return;
     }
 
-    const chatId = data.operator?.operator_id?.open_id || '';
+    const openId = data.operator?.operator_id?.open_id || '';
     const message: UnifiedMessage = {
       type: 'MENU_EVENT',
-      chatId,
+      userId: openId,
+      chatId: openId,  // MENU 事件没有 chat_id，私聊回复
       payload: {
         eventKey: data.event_key,
       } as MenuEventPayload,

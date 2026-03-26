@@ -44,6 +44,8 @@ export interface FeishuBot {
   registerCardHandler(handler: (data: CardActionTriggerEvent) => Promise<CardHandlerResponse>): void;
   /** 注册菜单事件处理器 */
   registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void;
+  /** 发送 Markdown 消息给指定用户（使用 open_id） */
+  sendToUser(openId: string, message: string): Promise<void>;
 }
 
 /** 内部状态 */
@@ -222,6 +224,38 @@ export function createFeishuBot(config: Config): FeishuBot {
     }
   }
 
+  async function sendCardWithType(
+    receiveId: string,
+    card: FeishuCard,
+    receiveIdType: 'chat_id' | 'open_id'
+  ): Promise<void> {
+    try {
+      const response = await state.client.im.v1.message.create({
+        params: {
+          receive_id_type: receiveIdType,
+        },
+        data: {
+          receive_id: receiveId,
+          msg_type: 'interactive',
+          content: JSON.stringify(card),
+        },
+      });
+
+      if (response.code !== 0) {
+        throw new Error(`发送失败: ${response.msg || `code ${response.code}`}`);
+      }
+
+      logger.debug('send', '消息发送成功', {
+        receiveId,
+        receiveIdType,
+        messageId: response.data?.message_id,
+      });
+    } catch (error) {
+      logger.error('send', '发送消息失败', error, { receiveId, receiveIdType });
+      throw error;
+    }
+  }
+
   return {
     async start(onMessage: (event: FeishuMessageEvent) => Promise<void>): Promise<void> {
       if (state.isRunning) {
@@ -290,30 +324,7 @@ export function createFeishuBot(config: Config): FeishuBot {
     },
 
     async sendCard(chatId: string, card: FeishuCard): Promise<void> {
-      try {
-        const response = await state.client.im.v1.message.create({
-          params: {
-            receive_id_type: 'chat_id',
-          },
-          data: {
-            receive_id: chatId,
-            msg_type: 'interactive',
-            content: JSON.stringify(card),
-          },
-        });
-
-        if (response.code !== 0) {
-          throw new Error(`发送失败: ${response.msg || `code ${response.code}`}`);
-        }
-
-        logger.debug('send', '消息发送成功', {
-          chatId,
-          messageId: response.data?.message_id,
-        });
-      } catch (error) {
-        logger.error('send', '发送消息失败', error, { chatId });
-        throw error;
-      }
+      await sendCardWithType(chatId, card, 'chat_id');
     },
 
     async sendTemplateCard(
@@ -364,6 +375,23 @@ export function createFeishuBot(config: Config): FeishuBot {
     registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void {
       state.menuHandler = handler;
       logger.debug('register', '菜单事件处理器已注册');
+    },
+
+    async sendToUser(openId: string, message: string): Promise<void> {
+      const card: FeishuCard = {
+        config: {
+          wide_screen_mode: true,
+          enable_forward: true,
+        },
+        elements: [
+          {
+            tag: 'markdown',
+            content: message,
+          },
+        ],
+      };
+
+      await sendCardWithType(openId, card, 'open_id');
     },
   };
 }
