@@ -234,6 +234,8 @@ export type MessageType = 'TEXT' | 'CARD_EVENT' | 'MENU_EVENT';
 export interface UnifiedMessage {
   /** 消息类型 */
   type: MessageType;
+  /** 用户 ID */
+  userId: string;
   /** 聊天 ID */
   chatId: string;
   /** 消息载荷 */
@@ -284,25 +286,7 @@ export interface CardActionTriggerEvent {
   };
 }
 
-/** 飞书菜单事件（SDK 原生格式） */
-export interface BotMenuEvent {
-  event_id?: string;
-  token?: string;
-  create_time?: string;
-  event_type?: string;
-  tenant_key?: string;
-  ts?: string;
-  uuid?: string;
-  type?: string;
-  app_id?: string;
-  operator?: {
-    operator_name?: string;
-    operator_id?: {
-      open_id?: string;
-      user_id?: string;
-      union_id?: string;
-    };
-  };
-  event_key?: string;
-  timestamp?: number;
-}
+/** 飞书菜单事件 */
+export type BotMenuEvent = Parameters<
+  NonNullable<EventHandles['application.bot.menu_v6']>
+>[0];
