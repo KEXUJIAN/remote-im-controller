@@ -55,6 +55,8 @@ interface BotState {
   isRunning: boolean;
   cardHandler: ((data: CardActionTriggerEvent) => Promise<CardHandlerResponse>) | null;
   menuHandler: ((data: BotMenuEvent) => Promise<void>) | null;
+  /** 已处理的消息 ID 缓存（去重用） */
+  processedMessageIds: Set<string>;
 }
 
 /**
@@ -74,6 +76,7 @@ export function createFeishuBot(config: Config): FeishuBot {
     isRunning: false,
     cardHandler: null,
     menuHandler: null,
+    processedMessageIds: new Set<string>(),
   };
 
   /**
@@ -121,9 +124,29 @@ export function createFeishuBot(config: Config): FeishuBot {
     const eventDispatcher = new lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data: FeishuMessageEvent) => {
         try {
-          const event = data;
-          
-          const senderOpenId = event.sender?.sender_id?.open_id;
+          const messageId = data.message.message_id;
+
+          // 去重检查（同步，快速返回）
+          if (state.processedMessageIds.has(messageId)) {
+            logger.warn('dedup', '消息重复，已跳过', {
+              messageId,
+              chatId: data.message.chat_id,
+            });
+            return;
+          }
+          state.processedMessageIds.add(messageId);
+          logger.info('dedup', '消息已记录', { messageId });
+
+          // 清理旧缓存（保留最近 100 条）
+          if (state.processedMessageIds.size > 100) {
+            const arr = Array.from(state.processedMessageIds);
+            const removed = arr.slice(0, arr.length - 100);
+            state.processedMessageIds = new Set(arr.slice(-100));
+            logger.debug('dedup', '清理旧缓存', { removedCount: removed.length });
+          }
+
+          // 权限检查
+          const senderOpenId = data.sender?.sender_id?.open_id;
           if (senderOpenId !== config.adminOpenId) {
             logger.debug('auth', '非管理员消息，已丢弃', {
               senderOpenId,
@@ -133,12 +156,13 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
 
           logger.info('message', '收到消息', {
-            chatId: event.message.chat_id,
-            messageId: event.message.message_id,
-            messageType: event.message.message_type,
+            chatId: data.message.chat_id,
+            messageId: data.message.message_id,
+            messageType: data.message.message_type,
           });
 
-          await onMessage(event);
+          // 异步处理（不阻塞响应）
+          setImmediate(() => onMessage(data));
         } catch (error) {
           logger.error('message', '消息处理失败', error);
         }
