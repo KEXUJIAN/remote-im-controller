@@ -24,8 +24,6 @@ if (process.env.NODE_ENV === 'development') {
 
 const logger = createLogger('app');
 
-const TIMEOUT_MS = 30 * 60 * 1000;
-
 function loadConfig(): Config {
   const feishuAppId = process.env.FEISHU_APP_ID;
   const feishuAppSecret = process.env.FEISHU_APP_SECRET;
@@ -48,6 +46,7 @@ function loadConfig(): Config {
     reconnectDelay: parseInt(process.env.RECONNECT_DELAY || '5000', 10),
     logLevel: (process.env.LOG_LEVEL as LogLevel) || 'info',
     logDir: process.env.LOG_DIR || './logs',
+    sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
     ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
   };
 
@@ -130,11 +129,11 @@ async function main(): Promise<void> {
   });
 
   setInterval(() => {
-    for (const chatId of stateManager.getAllStates()) {
-      if (stateManager.checkTimeout(chatId, TIMEOUT_MS)) {
-        stateManager.resetState(chatId);
-        adapter.sendMessage(chatId, '⏰ 已超过 30 分钟无操作，自动退出会话模式').catch((error) => {
-          logger.error('timeout', '发送超时消息失败', error, { chatId });
+    for (const userId of stateManager.getAllStates()) {
+      if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
+        stateManager.resetState(userId);
+        feishuBot.sendToUser(userId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式`).catch((error) => {
+          logger.error('timeout', '发送超时消息失败', error, { userId });
         });
       }
     }

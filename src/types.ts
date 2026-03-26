@@ -31,6 +31,8 @@ export interface Config {
   logLevel: LogLevel;
   /** 日志目录 */
   logDir: string;
+  /** 会话超时时间 (ms)，默认 10 分钟 */
+  sessionTimeoutMs: number;
   /** 卡片模板 ID（可选） */
   cardTemplateId?: string;
 }

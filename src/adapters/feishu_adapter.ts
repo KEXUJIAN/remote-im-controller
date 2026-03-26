@@ -159,6 +159,7 @@ async function runTest(): Promise<void> {
     reconnectDelay: 3000,
     logLevel: 'debug',
     logDir: './logs',
+    sessionTimeoutMs: 600000,
   };
 
   const adapter = createFeishuAdapter(testConfig, mockBot);

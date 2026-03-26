@@ -412,6 +412,7 @@ async function runTest(): Promise<void> {
     reconnectDelay: 3000,
     logLevel: 'debug',
     logDir: './logs',
+    sessionTimeoutMs: 600000,
   };
 
   console.log('=== 飞书机器人测试 ===');

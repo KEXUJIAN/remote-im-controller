@@ -38,6 +38,7 @@ function loadConfig(): Config {
     reconnectDelay: parseInt(process.env.RECONNECT_DELAY || '5000', 10),
     logLevel: (process.env.LOG_LEVEL as LogLevel) || 'info',
     logDir: process.env.LOG_DIR || './logs',
+    sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
   };
 
   logger.info('loadConfig', '配置加载完成', {

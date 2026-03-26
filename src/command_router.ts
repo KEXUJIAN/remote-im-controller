@@ -289,6 +289,7 @@ if (process.argv[2] === 'test') {
         reconnectDelay: 1000,
         logLevel: 'debug' as const,
         logDir: './logs',
+        sessionTimeoutMs: 600000,
       };
 
       const runTests = async () => {

@@ -107,6 +107,7 @@ if (process.argv[2] === 'test') {
     reconnectDelay: 1000,
     logLevel: 'info',
     logDir: './logs',
+    sessionTimeoutMs: 600000,
   };
 
   const builder = createCardBuilder(mockConfig);

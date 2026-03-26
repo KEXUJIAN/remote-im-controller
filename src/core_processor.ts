@@ -18,9 +18,6 @@ import { parseCommand } from './command_parser.js';
 
 const logger = createLogger('core_processor');
 
-/** 超时时间：30 分钟 */
-const TIMEOUT_MS = 30 * 60 * 1000;
-
 /** 初始延迟时间：500ms */
 const INITIAL_DELAY_MS = 500;
 
@@ -127,9 +124,9 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
     const state = stateManager.getState(userId);
 
     // 检查超时
-    if (stateManager.checkTimeout(userId, TIMEOUT_MS)) {
+    if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
       stateManager.resetState(userId);
-      await sendMessage(chatId, '⏰ 已超过 30 分钟无操作，自动退出会话模式');
+      await sendMessage(chatId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式`);
       return;
     }
 
@@ -382,6 +379,7 @@ if (process.argv[2] === 'test') {
     reconnectDelay: 1000,
     logLevel: 'debug',
     logDir: './logs',
+    sessionTimeoutMs: 600000,
   };
 
   const processor = createCoreProcessor({
