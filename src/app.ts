@@ -86,6 +86,9 @@ async function main(): Promise<void> {
     sendTemplateCard: async (chatId: string, templateId: string, variables: Record<string, unknown>) => {
       await feishuBot.sendTemplateCard(chatId, templateId, variables);
     },
+    sendToUser: async (openId: string, message: string) => {
+      await feishuBot.sendToUser(openId, message);
+    },
     lastSessionMap,
   });
 

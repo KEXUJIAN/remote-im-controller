@@ -135,6 +135,9 @@ async function runTest(): Promise<void> {
     },
     sendCard: async () => {},
     sendTemplateCard: async () => {},
+    sendToUser: async (openId: string, message: string) => {
+      console.log(`Mock sendToUser to ${openId}: ${message}`);
+    },
     registerCardHandler: (_handler) => {
       console.log('Card handler registered');
     },

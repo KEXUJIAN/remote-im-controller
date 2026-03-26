@@ -12,6 +12,7 @@ import type { UnifiedMessage, CardEventPayload, MenuEventPayload } from '../type
  * @returns 统一消息
  */
 function parseInput(input: string): UnifiedMessage {
+  const userId = 'local-cli-user';
   const chatId = 'local-cli';
   const timestamp = Date.now();
 
@@ -19,6 +20,7 @@ function parseInput(input: string): UnifiedMessage {
     const sessionName = input.slice('/click enter '.length).trim();
     return {
       type: 'CARD_EVENT',
+      userId,
       chatId,
       payload: { action: 'enter', sessionName } as CardEventPayload,
       timestamp,
@@ -29,6 +31,7 @@ function parseInput(input: string): UnifiedMessage {
     const sessionName = input.slice('/click kill '.length).trim();
     return {
       type: 'CARD_EVENT',
+      userId,
       chatId,
       payload: { action: 'kill', sessionName } as CardEventPayload,
       timestamp,
@@ -38,6 +41,7 @@ function parseInput(input: string): UnifiedMessage {
   if (input === '/menu exit') {
     return {
       type: 'MENU_EVENT',
+      userId,
       chatId,
       payload: { eventKey: 'exit_wsl_session_mode' } as MenuEventPayload,
       timestamp,
@@ -46,6 +50,7 @@ function parseInput(input: string): UnifiedMessage {
 
   return {
     type: 'TEXT',
+    userId,
     chatId,
     payload: { text: input },
     timestamp,
@@ -114,6 +119,7 @@ if (process.argv[2] === 'test') {
   {
     const result = parseInput('hello world');
     console.assert(result.type === 'TEXT', 'TEXT: type should be TEXT');
+    console.assert(result.userId === 'local-cli-user', 'TEXT: userId should be local-cli-user');
     console.assert(result.chatId === 'local-cli', 'TEXT: chatId should be local-cli');
     const textPayload = result.payload as { text: string };
     console.assert(textPayload.text === 'hello world', 'TEXT: payload.text should match input');
@@ -124,6 +130,7 @@ if (process.argv[2] === 'test') {
   {
     const result = parseInput('');
     console.assert(result.type === 'TEXT', 'EMPTY: type should be TEXT');
+    console.assert(result.userId === 'local-cli-user', 'EMPTY: userId should be local-cli-user');
     const textPayload = result.payload as { text: string };
     console.assert(textPayload.text === '', 'EMPTY: payload.text should be empty string');
     console.log('✓ 空输入解析');
@@ -182,6 +189,7 @@ if (process.argv[2] === 'test') {
     const result = parseInput('test');
     const after = Date.now();
     console.assert(result.type === 'TEXT', 'TIMESTAMP: type should be TEXT');
+    console.assert(result.userId === 'local-cli-user', 'TIMESTAMP: userId should be local-cli-user');
     const textPayload = result.payload as { text: string };
     console.assert(textPayload.text === 'test', 'TIMESTAMP: payload.text should match input');
     console.assert(result.timestamp >= before, 'TIMESTAMP: timestamp should be >= before');

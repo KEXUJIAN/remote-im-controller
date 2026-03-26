@@ -100,15 +100,17 @@ export interface CoreProcessorDeps {
   tmuxManager: TmuxManager;
   /** 配置 */
   config: Config;
-  /** 发送消息函数 */
+  /** 发送消息函数（使用 chatId） */
   sendMessage: (chatId: string, message: string) => Promise<void>;
+  /** 发送私聊消息函数（使用 openId） */
+  sendToUser: (openId: string, message: string) => Promise<void>;
   /** 发送模板卡片函数（可选） */
   sendTemplateCard?: (
     chatId: string,
     templateId: string,
     variables: Record<string, unknown>
   ) => Promise<void>;
-  /** 最后操作会话映射（可选） */
+  /** 最后操作会话映射（可选，key 为 userId） */
   lastSessionMap?: Map<string, string>;
 }
 
@@ -116,17 +118,17 @@ export interface CoreProcessorDeps {
  * 创建核心处理器
  */
 export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
-  const { stateManager, commandRouter, tmuxManager, config, sendMessage, sendTemplateCard, lastSessionMap } = deps;
+  const { stateManager, commandRouter, tmuxManager, config, sendMessage, sendToUser, sendTemplateCard, lastSessionMap } = deps;
 
   /**
    * 处理 TEXT 消息
    */
-  async function handleTextMessage(chatId: string, text: string): Promise<void> {
-    const state = stateManager.getState(chatId);
+  async function handleTextMessage(userId: string, chatId: string, text: string): Promise<void> {
+    const state = stateManager.getState(userId);
 
     // 检查超时
-    if (stateManager.checkTimeout(chatId, TIMEOUT_MS)) {
-      stateManager.resetState(chatId);
+    if (stateManager.checkTimeout(userId, TIMEOUT_MS)) {
+      stateManager.resetState(userId);
       await sendMessage(chatId, '⏰ 已超过 30 分钟无操作，自动退出会话模式');
       return;
     }
@@ -148,7 +150,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
       // 添加 lastSession
       if (lastSessionMap) {
-        const lastSession = lastSessionMap.get(chatId);
+        const lastSession = lastSessionMap.get(userId);
         if (lastSession !== undefined) {
           ctx.lastSession = lastSession;
         }
@@ -158,7 +160,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
       // 更新 lastSession
       if (result.lastSession && lastSessionMap) {
-        lastSessionMap.set(chatId, result.lastSession);
+        lastSessionMap.set(userId, result.lastSession);
       }
 
       // 优先发送模板卡片
@@ -185,7 +187,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       // 检查会话是否存在
       const exists = await tmuxManager.sessionExists(sessionName);
       if (!exists) {
-        stateManager.resetState(chatId);
+        stateManager.resetState(userId);
         await sendMessage(chatId, `❌ 会话 "${sessionName}" 已不存在，已退出会话模式`);
         return;
       }
@@ -215,8 +217,8 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   /**
    * 处理 CARD_EVENT 消息
    */
-  async function handleCardEvent(chatId: string, payload: CardEventPayload): Promise<void> {
-    const state = stateManager.getState(chatId);
+  async function handleCardEvent(userId: string, chatId: string, payload: CardEventPayload): Promise<void> {
+    const state = stateManager.getState(userId);
 
     // 如果已在 SESSION 模式，拒绝进入
     if (state.mode === 'SESSION') {
@@ -235,7 +237,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       }
 
       // 切换到 SESSION 模式
-      stateManager.transition(chatId, { mode: 'SESSION', activeSession: sessionName });
+      stateManager.transition(userId, { mode: 'SESSION', activeSession: sessionName });
       logger.info('handleCardEvent', `进入 SESSION 模式`, { chatId, sessionName });
 
       await sendMessage(chatId, `✅ 已进入会话模式：${sessionName}`);
@@ -257,49 +259,49 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   /**
    * 处理 MENU_EVENT 消息
    */
-  async function handleMenuEvent(chatId: string, payload: MenuEventPayload): Promise<void> {
-    const state = stateManager.getState(chatId);
+  async function handleMenuEvent(userId: string, payload: MenuEventPayload): Promise<void> {
+    const state = stateManager.getState(userId);
 
     // 如果在 SESSION 模式，退出
     if (state.mode === 'SESSION' && state.activeSession) {
       const sessionName = state.activeSession;
-      stateManager.resetState(chatId);
-      logger.info('handleMenuEvent', `退出 SESSION 模式`, { chatId, sessionName });
-      await sendMessage(chatId, `✅ 已退出会话模式：${sessionName}`);
+      stateManager.resetState(userId);
+      logger.info('handleMenuEvent', `退出 SESSION 模式`, { userId, sessionName });
+      await sendToUser(userId, `✅ 已退出会话模式：${sessionName}`);
       return;
     }
 
     // 其他菜单事件
-    logger.debug('handleMenuEvent', `菜单事件`, { chatId, eventKey: payload.eventKey });
+    logger.debug('handleMenuEvent', `菜单事件`, { userId, eventKey: payload.eventKey });
   }
 
   /**
    * 处理统一消息
    */
   async function process(message: UnifiedMessage): Promise<void> {
-    const { type, chatId, payload } = message;
+    const { type, userId, chatId, payload } = message;
 
-    logger.debug('process', `处理消息`, { type, chatId });
+    logger.debug('process', `处理消息`, { type, userId, chatId });
 
     try {
       switch (type) {
         case 'TEXT': {
           const textPayload = payload as { text: string };
-          await handleTextMessage(chatId, textPayload.text);
+          await handleTextMessage(userId, chatId, textPayload.text);
           break;
         }
         case 'CARD_EVENT':
-          await handleCardEvent(chatId, payload as CardEventPayload);
+          await handleCardEvent(userId, chatId, payload as CardEventPayload);
           break;
         case 'MENU_EVENT':
-          await handleMenuEvent(chatId, payload as MenuEventPayload);
+          await handleMenuEvent(userId, payload as MenuEventPayload);
           break;
         default:
           logger.warn('process', `未知消息类型: ${type}`);
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      logger.error('process', `消息处理失败`, error, { type, chatId });
+      logger.error('process', `消息处理失败`, error, { type, userId, chatId });
       await sendMessage(chatId, `❌ 处理失败: ${error.message}`);
     }
   }
@@ -312,29 +314,30 @@ if (process.argv[2] === 'test') {
   console.log('=== CoreProcessor 测试 ===\n');
 
   interface SentMessage { chatId: string; message: string }
+  interface SentUserMessage { userId: string; message: string }
 
   // 创建模拟依赖
   const mockStateMap = new Map<string, { mode: 'COMMAND' | 'SESSION'; activeSession: string | null; lastActivityTime: number }>();
 
   const mockStateManager: StateManager = {
-    getState(chatId: string) {
-      let state = mockStateMap.get(chatId);
+    getState(userId: string) {
+      let state = mockStateMap.get(userId);
       if (!state) {
         state = { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() };
-        mockStateMap.set(chatId, state);
+        mockStateMap.set(userId, state);
       }
       return state;
     },
-    transition(chatId: string, newState: Partial<{ mode: 'COMMAND' | 'SESSION'; activeSession: string | null }>) {
-      const current = this.getState(chatId);
+    transition(userId: string, newState: Partial<{ mode: 'COMMAND' | 'SESSION'; activeSession: string | null }>) {
+      const current = this.getState(userId);
       const updated = { ...current, ...newState, lastActivityTime: Date.now() };
-      mockStateMap.set(chatId, updated);
+      mockStateMap.set(userId, updated);
     },
-    checkTimeout(_chatId: string, _timeoutMs: number) {
+    checkTimeout(_userId: string, _timeoutMs: number) {
       return false;
     },
-    resetState(chatId: string) {
-      mockStateMap.set(chatId, { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() });
+    resetState(userId: string) {
+      mockStateMap.set(userId, { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() });
     },
     getAllStates() {
       return mockStateMap.keys();
@@ -342,6 +345,7 @@ if (process.argv[2] === 'test') {
   };
 
   const sentMessages: SentMessage[] = [];
+  const sentUserMessages: SentUserMessage[] = [];
 
   const mockCommandRouter: CommandRouter = {
     async route(ctx) {
@@ -388,13 +392,21 @@ if (process.argv[2] === 'test') {
     sendMessage: async (chatId, message) => {
       sentMessages.push({ chatId, message });
     },
+    sendToUser: async (userId, message) => {
+      sentUserMessages.push({ userId, message });
+    },
   });
 
   function getLastMessage(): SentMessage | undefined {
     return sentMessages.length > 0 ? sentMessages[sentMessages.length - 1] : undefined;
   }
 
+  function getLastUserMessage(): SentUserMessage | undefined {
+    return sentUserMessages.length > 0 ? sentUserMessages[sentUserMessages.length - 1] : undefined;
+  }
+
   const runTests = async () => {
+    const testUserId = 'test-user-001';
     const testChatId = 'test-chat-001';
 
     // 测试 1: TEXT 消息在 COMMAND 模式下调用指令路由器
@@ -402,6 +414,7 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'TEXT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { text: 'help' },
       timestamp: Date.now(),
@@ -419,11 +432,12 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'CARD_EVENT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { action: 'enter', sessionName: 'test-session' },
       timestamp: Date.now(),
     });
-    const stateAfterEnter = mockStateManager.getState(testChatId);
+    const stateAfterEnter = mockStateManager.getState(testUserId);
     if (stateAfterEnter.mode === 'SESSION' && stateAfterEnter.activeSession === 'test-session') {
       console.log('   ✓ 状态切换成功\n');
     } else {
@@ -436,6 +450,7 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'TEXT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { text: 'ls -la' },
       timestamp: Date.now(),
@@ -453,6 +468,7 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'CARD_EVENT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { action: 'enter', sessionName: 'another-session' },
       timestamp: Date.now(),
@@ -468,14 +484,16 @@ if (process.argv[2] === 'test') {
     // 测试 5: MENU_EVENT 退出会话模式
     console.log('5. 测试 MENU_EVENT 退出会话模式...');
     sentMessages.length = 0;
+    sentUserMessages.length = 0;
     await processor.process({
       type: 'MENU_EVENT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { eventKey: 'exit_session' },
       timestamp: Date.now(),
     });
-    const stateAfterExit = mockStateManager.getState(testChatId);
-    const msg5 = getLastMessage();
+    const stateAfterExit = mockStateManager.getState(testUserId);
+    const msg5 = getLastUserMessage();
     if (stateAfterExit.mode === 'COMMAND' && msg5 && msg5.message.includes('已退出会话模式')) {
       console.log('   ✓ 退出成功\n');
     } else {
@@ -488,6 +506,7 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'CARD_EVENT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { action: 'kill', sessionName: 'test-session' },
       timestamp: Date.now(),
@@ -503,7 +522,7 @@ if (process.argv[2] === 'test') {
     // 测试 7: 超时检查逻辑
     console.log('7. 测试超时检查逻辑...');
     // 手动设置超时状态
-    mockStateMap.set(testChatId, {
+    mockStateMap.set(testUserId, {
       mode: 'SESSION',
       activeSession: 'test-session',
       lastActivityTime: Date.now() - (31 * 60 * 1000), // 31 分钟前
@@ -513,6 +532,7 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'TEXT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { text: 'ls' },
       timestamp: Date.now(),
@@ -528,7 +548,7 @@ if (process.argv[2] === 'test') {
     // 测试 8: 会话不存在时退出 SESSION 模式
     console.log('8. 测试会话不存在时退出 SESSION 模式...');
     mockStateManager.checkTimeout = () => false;
-    mockStateMap.set(testChatId, {
+    mockStateMap.set(testUserId, {
       mode: 'SESSION',
       activeSession: 'nonexistent-session',
       lastActivityTime: Date.now(),
@@ -536,11 +556,12 @@ if (process.argv[2] === 'test') {
     sentMessages.length = 0;
     await processor.process({
       type: 'TEXT',
+      userId: testUserId,
       chatId: testChatId,
       payload: { text: 'ls' },
       timestamp: Date.now(),
     });
-    const stateAfterNonexistent = mockStateManager.getState(testChatId);
+    const stateAfterNonexistent = mockStateManager.getState(testUserId);
     const msg8 = getLastMessage();
     if (stateAfterNonexistent.mode === 'COMMAND' && msg8 && msg8.message.includes('已不存在')) {
       console.log('   ✓ 自动退出成功\n');

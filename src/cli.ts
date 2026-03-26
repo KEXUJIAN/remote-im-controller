@@ -71,6 +71,9 @@ async function main(): Promise<void> {
     sendMessage: async (_chatId: string, message: string) => {
       await adapter.sendMessage(_chatId, message);
     },
+    sendToUser: async (_openId: string, message: string) => {
+      console.log(message);
+    },
     lastSessionMap,
   });
 
