@@ -138,6 +138,28 @@ CoreProcessor.process()
             └── exit_session_mode → 退出 SESSION 模式
 ```
 
+### ID 职责分离
+
+`UnifiedMessage` 包含两个 ID 字段，职责不同：
+
+| 字段 | 用途 | 来源 |
+|------|------|------|
+| `userId` | 状态管理 key（跨事件类型一致） | `open_id` |
+| `chatId` | 消息回复目标 | TEXT/CARD: `chat_id`，MENU: `open_id` |
+
+**各事件类型的 ID 映射**：
+
+| 事件类型 | userId | chatId | 消息回复方式 |
+|----------|--------|--------|--------------|
+| TEXT | `event.sender.sender_id.open_id` | `event.message.chat_id` | `sendMessage(chatId, ...)` |
+| CARD | `data.operator.open_id` | `context.open_chat_id` | `sendMessage(chatId, ...)` |
+| MENU | `data.operator.operator_id.open_id` | 同 userId | `sendToUser(userId, ...)` |
+
+**设计理由**：
+- TEXT/CARD 消息需要回复到原聊天室（使用 `chat_id`）
+- MENU 事件没有 `chat_id`，只能私聊回复（使用 `open_id`）
+- 状态管理需要跨事件类型一致的用户标识（使用 `open_id`）
+
 ---
 
 ## 四、SESSION 模式轮询机制
