@@ -208,7 +208,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         output = `⏱️ 等待超时 (${result.pollCount} 次轮询, ${result.elapsed}ms)\n\n${output}`;
       }
 
-      await sendMessage(chatId, output);
+      await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
     }
   }
 
@@ -238,9 +238,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       stateManager.transition(chatId, { mode: 'SESSION', activeSession: sessionName });
       logger.info('handleCardEvent', `进入 SESSION 模式`, { chatId, sessionName });
 
-      // 抓取当前屏幕
-      const result = await tmuxManager.captureScreen(sessionName, config.tmuxDefaultLines);
-      await sendMessage(chatId, `✅ 已进入会话模式：${sessionName}\n\n\`\`\`\n${result.cleaned}\n\`\`\``);
+      await sendMessage(chatId, `✅ 已进入会话模式：${sessionName}`);
     } else if (action === 'kill') {
       // 终止会话
       logger.info('handleCardEvent', `终止会话`, { chatId, sessionName });
@@ -443,7 +441,7 @@ if (process.argv[2] === 'test') {
       timestamp: Date.now(),
     });
     const msg3 = getLastMessage();
-    if (msg3 && msg3.message === 'test output') {
+    if (msg3 && msg3.message === '```\ntest output\n```') {
       console.log('   ✓ 透传成功\n');
     } else {
       console.log('   ✗ 透传失败\n');
