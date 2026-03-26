@@ -105,7 +105,7 @@
 │       │                                                     │
 │       │  点击机器人菜单"退出会话模式"                          │
 │       │  或 /menu exit                                       │
-│       │  或 30 分钟无操作                                     │
+│       │  或超时（默认 10 分钟）                                │
 │       ▼                                                     │
 │  COMMAND 模式                                                │
 │                                                             │
@@ -243,6 +243,9 @@ TMUX_TMPDIR=./logs             # tmux 临时文件目录
 POLL_INTERVAL=3000             # 轮询间隔 (ms)
 POLL_TIMEOUT=60000             # 轮询超时 (ms)
 POLL_STABLE_COUNT=2            # 稳定计数（连续 N 次相同）
+
+# 会话超时配置
+SESSION_TIMEOUT_MS=600000      # 会话超时时间 (ms)，默认 10 分钟
 
 # 重连配置
 RECONNECT_MAX_RETRIES=5        # 最大重连次数
