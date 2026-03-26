@@ -36,7 +36,7 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
     const content: FeishuMessageContent = JSON.parse(event.message.content);
     const message: UnifiedMessage = {
       type: 'TEXT',
-      chatId: event.message.chat_id,
+      chatId: event.sender?.sender_id?.open_id || '',
       payload: {
         text: content.text,
         messageId: event.message.message_id,
@@ -60,7 +60,7 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
 
     const message: UnifiedMessage = {
       type: 'CARD_EVENT',
-      chatId: context?.open_chat_id || '',
+      chatId: data.operator.open_id,
       payload: {
         action: value.action,
         sessionName: value.session,
