@@ -72,12 +72,10 @@
 | **types** | `src/types.ts` | 类型定义和接口 |
 | **logger** | `src/logger.ts` | 日志记录（文件 + 控制台） |
 | **tmux_manager** | `src/tmux_manager.ts` | 通过 child_process 与 tmux 交互 |
-| **parser** | `src/parser.ts` | 清洗终端输出，去除 ANSI 代码 |
 | **command_parser** | `src/command_parser.ts` | 解析用户指令 |
 | **command_router** | `src/command_router.ts` | 路由指令到处理器 |
 | **state_manager** | `src/state_manager.ts` | 状态机管理（COMMAND/SESSION 模式） |
 | **core_processor** | `src/core_processor.ts` | 核心处理器，统一消息路由 |
-| **card_builder** | `src/card_builder.ts` | 飞书卡片构建器 |
 | **feishu_bot** | `src/feishu_bot.ts` | 飞书 WSS 连接和消息发送 |
 | **adapters/adapter** | `src/adapters/adapter.ts` | 适配器接口定义 |
 | **adapters/feishu_adapter** | `src/adapters/feishu_adapter.ts` | 飞书适配器实现 |
@@ -298,7 +296,6 @@ app.ts (飞书模式)
   │     ├── command_router.ts
   │     │     └── command_parser.ts
   │     └── tmux_manager.ts
-  ├── card_builder.ts
   └── logger.ts
 
 cli.ts (本地测试)
@@ -317,7 +314,6 @@ cli.ts (本地测试)
 ```bash
 # 测试各模块
 npm run test:tmux        # tmux 管理器
-npm run test:parser      # 文本解析
 npm run test:feishu      # 飞书模块
 npm run test:state       # 状态机
 npm run test:core        # 核心处理器
