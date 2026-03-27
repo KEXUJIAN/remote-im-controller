@@ -16,6 +16,9 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('feishu_bot');
 
+/** 消息 ID 缓存大小（用于去重） */
+const MESSAGE_ID_CACHE_SIZE = 100;
+
 /** 卡片事件处理响应 */
 export interface CardHandlerResponse {
   toast?: {
@@ -139,11 +142,11 @@ export function createFeishuBot(config: Config): FeishuBot {
           state.processedMessageIds.add(messageId);
           logger.info('dedup', '消息已记录', { messageId });
 
-          // 清理旧缓存（保留最近 100 条）
-          if (state.processedMessageIds.size > 100) {
+          // 清理旧缓存
+          if (state.processedMessageIds.size > MESSAGE_ID_CACHE_SIZE) {
             const arr = Array.from(state.processedMessageIds);
-            const removed = arr.slice(0, arr.length - 100);
-            state.processedMessageIds = new Set(arr.slice(-100));
+            const removed = arr.slice(0, arr.length - MESSAGE_ID_CACHE_SIZE);
+            state.processedMessageIds = new Set(arr.slice(-MESSAGE_ID_CACHE_SIZE));
             logger.debug('dedup', '清理旧缓存', { removedCount: removed.length });
           }
 

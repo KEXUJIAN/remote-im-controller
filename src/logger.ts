@@ -67,8 +67,10 @@ function output(entry: LogEntry): void {
   if (fileConfig) {
     try {
       appendFileSync(fileConfig.path, json, 'utf-8');
-    } catch {
-      // 忽略写入失败
+    } catch (err) {
+      // 文件写入失败（磁盘满、权限不足等），降级到控制台输出
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[WARN] 日志文件写入失败: ${errorMsg}\n`);
     }
   }
 
