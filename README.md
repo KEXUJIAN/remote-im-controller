@@ -131,9 +131,6 @@ POLL_TIMEOUT=300000  # 5 分钟
 # 测试 tmux 控制模块
 npm run test:tmux
 
-# 测试文本解析模块
-npm run test:parser
-
 # 测试飞书通信模块（模拟模式）
 npm run test:feishu
 
@@ -156,7 +153,6 @@ remote-im-controller/
 ├── src/
 │   ├── app.ts              # 主入口
 │   ├── tmux_manager.ts     # tmux 控制
-│   ├── parser.ts           # 文本清洗
 │   ├── command_parser.ts   # 指令解析
 │   ├── command_router.ts   # 指令路由
 │   ├── feishu_bot.ts       # 飞书通信
