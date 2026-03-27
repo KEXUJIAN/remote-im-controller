@@ -9,7 +9,6 @@
     "start": "node dist/app.js",
     "dev": "NODE_ENV=development tsx watch src/app.ts",
     "test:tmux": "tsx src/tmux_manager.ts test",
-    "test:parser": "tsx src/parser.ts test",
     "test:feishu": "tsx src/feishu_bot.ts test",
     "test:state": "tsx src/state_manager.ts test",
     "test:core": "tsx src/core_processor.ts test",
