@@ -21,8 +21,10 @@ export interface Config {
   pollInterval: number;
   /** 轮询超时 (ms) */
   pollTimeout: number;
-  /** 稳定计数 */
-  pollStableCount: number;
+  /** 进程结束后等待时间 (ms)，默认 500 */
+  pollFinalDelay: number;
+  /** 超时后额外检测次数，默认 3 */
+  pollTimeoutCheckCount: number;
   /** 最大重连次数 */
   reconnectMaxRetries: number;
   /** 重连延迟 (ms) */

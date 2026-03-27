@@ -19,6 +19,7 @@ export interface TmuxManager {
   sendCommand(name: string, cmd: string): Promise<void>;
   captureScreen(name: string, lines?: number): Promise<TmuxCaptureResult>;
   sessionExists(name: string): Promise<boolean>;
+  getPaneCommand(name: string): Promise<string>;
 }
 
 export function createTmuxManager(defaultLines: number, debug: boolean = false): TmuxManager {
@@ -145,6 +146,19 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
       const exists = sessions.includes(name);
       logger.debug('sessionExists', `会话 ${name} ${exists ? '存在' : '不存在'}`);
       return exists;
+    },
+
+    async getPaneCommand(name: string): Promise<string> {
+      logger.debug('getPaneCommand', `获取会话当前命令: ${name}`);
+      try {
+        const output = await execTmux(['list-panes', '-t', name, '-F', '#{pane_current_command}']);
+        const command = output.trim();
+        logger.debug('getPaneCommand', `会话 ${name} 当前命令: ${command}`);
+        return command;
+      } catch {
+        logger.debug('getPaneCommand', `获取会话命令失败，会话可能不存在: ${name}`);
+        return '';
+      }
     },
   };
 }

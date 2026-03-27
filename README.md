@@ -67,6 +67,8 @@ vim .env
 - `SESSION_TIMEOUT_MS` - 会话超时时间 ms（默认 600000，即 10 分钟）
 - `POLL_INTERVAL` - 轮询间隔 ms（默认 3000）
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
+- `POLL_FINAL_DELAY` - 进程结束后等待时间 ms（默认 500）
+- `POLL_TIMEOUT_CHECK_COUNT` - 超时后额外检测次数（默认 3）
 
 ### 4. 启动服务
 
@@ -102,6 +104,24 @@ pm2 start ecosystem.config.cjs
 | `/cmd create <name>` | 创建会话 | `/cmd create opencode` |
 | `/cmd kill <name>` | 终止会话 | `/cmd kill opencode` |
 | `/cmd <session> <command>` | 执行命令 | `/cmd opencode ls -la` |
+
+## SESSION 模式轮询机制
+
+SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
+
+1. **发送前**：记录当前 pane 的前台命令（如 zsh）
+2. **轮询中**：检测 `pane_current_command` 是否回到原始值
+3. **命令完成**：进程回到原始 shell 后，等待 `POLL_FINAL_DELAY` ms 再抓取输出
+4. **超时保护**：最长等待 `POLL_TIMEOUT` ms
+
+### 长命令处理
+
+如果命令运行时间可能超过 `POLL_TIMEOUT`（默认 60 秒），可以在 `.env` 中调大：
+```bash
+POLL_TIMEOUT=300000  # 5 分钟
+```
+
+超时后会返回当前输出并提示"命令可能仍在运行中，可调大 POLL_TIMEOUT 环境变量"。
 
 ## 模块测试
 

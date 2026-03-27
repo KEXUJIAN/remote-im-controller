@@ -41,7 +41,8 @@ function loadConfig(): Config {
     tmuxDebug: process.env.TMUX_DEBUG === 'true',
     pollInterval: parseInt(process.env.POLL_INTERVAL || '3000', 10),
     pollTimeout: parseInt(process.env.POLL_TIMEOUT || '60000', 10),
-    pollStableCount: parseInt(process.env.POLL_STABLE_COUNT || '2', 10),
+    pollFinalDelay: parseInt(process.env.POLL_FINAL_DELAY || '500', 10),
+    pollTimeoutCheckCount: parseInt(process.env.POLL_TIMEOUT_CHECK_COUNT || '3', 10),
     reconnectMaxRetries: parseInt(process.env.RECONNECT_MAX_RETRIES || '5', 10),
     reconnectDelay: parseInt(process.env.RECONNECT_DELAY || '5000', 10),
     logLevel: (process.env.LOG_LEVEL as LogLevel) || 'info',
@@ -56,7 +57,8 @@ function loadConfig(): Config {
     tmuxDefaultLines: config.tmuxDefaultLines,
     pollInterval: config.pollInterval,
     pollTimeout: config.pollTimeout,
-    pollStableCount: config.pollStableCount,
+    pollFinalDelay: config.pollFinalDelay,
+    pollTimeoutCheckCount: config.pollTimeoutCheckCount,
   });
 
   return config;

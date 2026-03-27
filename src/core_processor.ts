@@ -31,12 +31,14 @@ interface PollResult {
   pollCount: number;
   /** 总耗时 (ms) */
   elapsed: number;
+  /** 超时时命令是否仍在运行 */
+  stillRunning?: boolean;
 }
 
 /**
- * 轮询抓取屏幕直到稳定
- * - 内容变化时刷新剩余超时时间（支持流式输出）
- * - 连续 N 次内容相同视为稳定
+ * 轮询抓取屏幕直到命令完成
+ * - 检测进程状态变化判断命令是否完成
+ * - 超时后额外检测几次，避免刚结束时抓到不完整输出
  */
 async function captureWithPoll(
   tmuxManager: TmuxManager,
@@ -44,42 +46,57 @@ async function captureWithPoll(
   lines: number,
   pollInterval: number,
   pollTimeout: number,
-  stableCount: number
+  originalCmd: string,
+  finalDelay: number,
+  timeoutCheckCount: number
 ): Promise<PollResult> {
   const startTime = Date.now();
-  let lastHash = '';
-  let stableCountHit = 0;
   let pollCount = 0;
 
   await new Promise((r) => setTimeout(r, INITIAL_DELAY_MS));
 
   while (true) {
     pollCount++;
-    const result = await tmuxManager.captureScreen(sessionName, lines);
+    const currentCmd = await tmuxManager.getPaneCommand(sessionName);
 
-    if (result.hash !== lastHash) {
-      lastHash = result.hash;
-      stableCountHit = 0;
-    } else {
-      stableCountHit++;
-      if (stableCountHit >= stableCount) {
-        return {
-          cleaned: result.cleaned,
-          timeout: false,
-          pollCount,
-          elapsed: Date.now() - startTime,
-        };
+    if (currentCmd === originalCmd) {
+      if (finalDelay > 0) {
+        await new Promise((r) => setTimeout(r, finalDelay));
       }
+      const result = await tmuxManager.captureScreen(sessionName, lines);
+      logger.info('captureWithPoll', `命令完成`, { sessionName, pollCount, elapsed: Date.now() - startTime });
+      return { cleaned: result.cleaned, timeout: false, pollCount, elapsed: Date.now() - startTime };
     }
+
+    logger.debug('captureWithPoll', `命令执行中`, { currentCmd, originalCmd });
 
     const elapsed = Date.now() - startTime;
     if (elapsed >= pollTimeout) {
-      logger.warn('captureWithPoll', `轮询超时`, { sessionName, pollCount, elapsed });
+      logger.info('captureWithPoll', `超时，开始额外检测`, { sessionName, timeoutCheckCount });
+
+      for (let i = 0; i < timeoutCheckCount; i++) {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        pollCount++;
+        const checkCmd = await tmuxManager.getPaneCommand(sessionName);
+
+        if (checkCmd === originalCmd) {
+          if (finalDelay > 0) {
+            await new Promise((r) => setTimeout(r, finalDelay));
+          }
+          const result = await tmuxManager.captureScreen(sessionName, lines);
+          logger.info('captureWithPoll', `超时后检测到命令完成`, { sessionName, pollCount, extraChecks: i + 1 });
+          return { cleaned: result.cleaned, timeout: false, pollCount, elapsed: Date.now() - startTime };
+        }
+      }
+
+      const result = await tmuxManager.captureScreen(sessionName, lines);
+      logger.warn('captureWithPoll', '轮询超时，命令仍在运行', { sessionName, pollCount, elapsed: Date.now() - startTime, currentCmd });
       return {
         cleaned: result.cleaned,
         timeout: true,
         pollCount,
-        elapsed,
+        elapsed: Date.now() - startTime,
+        stillRunning: true
       };
     }
 
@@ -179,7 +196,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
     // SESSION 模式：透传到 tmux
     if (state.activeSession) {
       const sessionName = state.activeSession;
-      logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
 
       // 检查会话是否存在
       const exists = await tmuxManager.sessionExists(sessionName);
@@ -189,7 +205,11 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         return;
       }
 
+      // 记录原始命令
+      const originalCmd = await tmuxManager.getPaneCommand(sessionName);
+
       // 发送命令到 tmux
+      logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
       await tmuxManager.sendCommand(sessionName, text);
 
       // 轮询等待屏幕稳定
@@ -199,12 +219,14 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         config.tmuxDefaultLines,
         config.pollInterval,
         config.pollTimeout,
-        config.pollStableCount
+        originalCmd,
+        config.pollFinalDelay,
+        config.pollTimeoutCheckCount
       );
 
       let output = result.cleaned;
-      if (result.timeout) {
-        output = `⏱️ 等待超时 (${result.pollCount} 次轮询, ${result.elapsed}ms)\n\n${output}`;
+      if (result.timeout && result.stillRunning) {
+        output = `⏱️ 等待超时 (${Math.round(result.elapsed / 1000)}s)\n⚠️ 命令可能仍在运行中\n💡 可调大 POLL_TIMEOUT 环境变量\n\n${output}`;
       }
 
       await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
@@ -364,6 +386,7 @@ if (process.argv[2] === 'test') {
     async sendCommand() {},
     async captureScreen() { return { raw: 'test output', cleaned: 'test output', lines: 1, hash: 'abc123' }; },
     async sessionExists(name: string) { return name === 'test-session'; },
+    async getPaneCommand() { return 'zsh'; },
   };
 
   const mockConfig: Config = {
@@ -374,7 +397,8 @@ if (process.argv[2] === 'test') {
     tmuxDebug: false,
     pollInterval: 1000,
     pollTimeout: 30000,
-    pollStableCount: 2,
+    pollFinalDelay: 500,
+    pollTimeoutCheckCount: 3,
     reconnectMaxRetries: 5,
     reconnectDelay: 1000,
     logLevel: 'debug',
