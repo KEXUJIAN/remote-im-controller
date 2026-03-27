@@ -24,7 +24,6 @@ npm run local          # 本地 CLI 测试入口
 
 ```bash
 npm run test:tmux      # 测试 tmux 控制模块
-npm run test:parser    # 测试文本解析模块
 npm run test:feishu    # 测试飞书通信模块
 npm run test:state     # 测试状态机模块
 npm run test:core      # 测试核心处理器
@@ -216,10 +215,8 @@ src/
 ├── state_manager.ts    # 状态机模块（COMMAND/SESSION 模式）
 ├── core_processor.ts   # 核心处理器（消息路由 + 轮询等待）
 ├── tmux_manager.ts     # tmux 控制模块
-├── parser.ts           # 文本清洗模块
 ├── command_parser.ts   # 指令解析模块
 ├── command_router.ts   # 指令路由模块
-├── card_builder.ts     # 飞书卡片构建器
 ├── feishu_bot.ts       # 飞书通信模块
 └── adapters/
     ├── adapter.ts          # 适配器接口
