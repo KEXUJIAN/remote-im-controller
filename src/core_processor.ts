@@ -140,13 +140,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   async function handleTextMessage(userId: string, chatId: string, text: string): Promise<void> {
     const state = stateManager.getState(userId);
 
-    // 检查超时
-    if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
-      stateManager.resetState(userId);
-      await sendMessage(chatId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式`);
-      return;
-    }
-
     // COMMAND 模式：调用指令路由器
     if (state.mode === 'COMMAND') {
       const parsed = parseCommand(text);

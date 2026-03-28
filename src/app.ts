@@ -132,14 +132,21 @@ async function main(): Promise<void> {
 
   setInterval(() => {
     for (const userId of stateManager.getAllStates()) {
+      const state = stateManager.getState(userId);
+      // 只检查 SESSION 模式的超时
+      if (state.mode !== 'SESSION') {
+        continue;
+      }
       if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
+        const sessionName = state.activeSession;
         stateManager.resetState(userId);
-        feishuBot.sendToUser(userId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式`).catch((error) => {
+        logger.info('timeout', `SESSION 模式超时退出`, { userId, sessionName });
+        feishuBot.sendToUser(userId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式：${sessionName}`).catch((error) => {
           logger.error('timeout', '发送超时消息失败', error, { userId });
         });
       }
     }
-  }, 60 * 1000);
+  }, 10 * 1000);
 
   logger.info('main', '启动飞书适配器...');
   await adapter.start(coreProcessor);
