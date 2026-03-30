@@ -233,25 +233,29 @@ src/
 | `ADMIN_OPEN_ID` | 是 | - | 管理员 Open ID |
 | `LOG_LEVEL` | 否 | `info` | 日志级别 |
 | `LOG_DIR` | 否 | `./logs` | 日志目录 |
-| `TMUX_DEFAULT_LINES` | 否 | `200` | tmux 抓取行数 |
+| `TMUX_DEFAULT_LINES` | 否 | `50` | tmux 抓取行数 |
 | `TMUX_DEBUG` | 否 | `false` | tmux 详细日志 |
 | `TMUX_TMPDIR` | 否 | `$LOG_DIR` | tmux 临时文件目录 |
 | `POLL_INTERVAL` | 否 | `3000` | 轮询间隔 (ms) |
 | `POLL_TIMEOUT` | 否 | `60000` | 轮询超时 (ms) |
-| `POLL_STABLE_COUNT` | 否 | `2` | 稳定计数 |
+| `POLL_FINAL_DELAY` | 否 | `500` | 进程结束后等待时间 (ms) |
+| `POLL_TIMEOUT_CHECK_COUNT` | 否 | `3` | 超时后额外检测次数 |
 | `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
+| `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
+| `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
 ## SESSION 模式轮询机制
 
-SESSION 模式下命令发送后，使用轮询等待屏幕稳定：
+SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
 
-1. **初始延迟**：500ms 后开始抓取
-2. **轮询间隔**：每 `POLL_INTERVAL` ms 抓取一次
-3. **稳定判定**：连续 `POLL_STABLE_COUNT` 次 hash 相同
-4. **超时保护**：最长等待 `POLL_TIMEOUT` ms
-5. **流式支持**：内容变化时持续等待
+1. **发送前**：记录当前 pane 的前台命令（如 zsh）
+2. **轮询检测**：每 `POLL_INTERVAL` ms 检测 `pane_current_command`
+3. **完成判定**：当前进程回到原始 shell 时认为命令完成
+4. **最终延迟**：等待 `POLL_FINAL_DELAY` ms 后抓取输出
+5. **超时保护**：最长等待 `POLL_TIMEOUT` ms
+6. **超时额外检测**：超时后额外检测 `POLL_TIMEOUT_CHECK_COUNT` 次
 
 适用于：
 - LLM 流式响应（如 `opencode run "你好"`）
