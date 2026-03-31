@@ -243,6 +243,9 @@ src/
 | `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
+| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | 流式日志文件目录 |
+| `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
+| `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 最小间隔警告阈值 (ms) |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 

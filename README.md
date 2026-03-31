@@ -69,6 +69,9 @@ vim .env
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
 - `POLL_FINAL_DELAY` - 进程结束后等待时间 ms（默认 500）
 - `POLL_TIMEOUT_CHECK_COUNT` - 超时后额外检测次数（默认 3）
+- `STREAM_LOG_DIR` - 流式日志文件目录（默认 `./logs/stream/`）
+- `STREAM_PUSH_INTERVAL_MS` - 流式推送间隔 ms（默认 2000）
+- `STREAM_PUSH_MIN_INTERVAL_MS` - 最小间隔警告阈值 ms（默认 500）
 
 ### 4. 启动服务
 
