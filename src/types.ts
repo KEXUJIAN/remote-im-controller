@@ -37,6 +37,12 @@ export interface Config {
   sessionTimeoutMs: number;
   /** 卡片模板 ID（可选） */
   cardTemplateId?: string;
+  /** 流式日志目录，默认 ./logs/stream/ */
+  streamLogDir: string;
+  /** 流式推送间隔 (ms)，默认 2000 */
+  streamPushIntervalMs: number;
+  /** 流式推送最小间隔警告阈值 (ms)，默认 500 */
+  streamPushMinIntervalMs: number;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -63,6 +69,33 @@ export interface TmuxCaptureResult {
   lines: number;
   /** 哈希值 */
   hash: string;
+}
+
+// ============ 流式消费 ============
+
+/** Session 的 pipe-pane 日志信息 */
+export interface SessionPipeInfo {
+  /** 会话名 */
+  sessionName: string;
+  /** 日志文件路径 */
+  logFilePath: string;
+  /** 是否正在消费 */
+  isConsuming: boolean;
+}
+
+/** 流式消费者回调 */
+export type StreamConsumerCallback = (chunk: string) => Promise<void>;
+
+/** 流式消费者接口 */
+export interface StreamConsumer {
+  /** 开始消费日志文件 */
+  start(): void;
+  /** 停止消费 */
+  stop(): void;
+  /** 销毁资源 */
+  destroy(): Promise<void>;
+  /** 重置偏移量（开始新命令时调用） */
+  reset(): void;
 }
 
 // ============ 指令解析 ============

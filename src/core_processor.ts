@@ -397,6 +397,9 @@ if (process.argv[2] === 'test') {
     logLevel: 'debug',
     logDir: './logs',
     sessionTimeoutMs: 600000,
+    streamLogDir: './logs/stream/',
+    streamPushIntervalMs: 2000,
+    streamPushMinIntervalMs: 500,
   };
 
   const processor = createCoreProcessor({

@@ -291,6 +291,9 @@ if (process.argv[2] === 'test') {
         logLevel: 'debug' as const,
         logDir: './logs',
         sessionTimeoutMs: 600000,
+        streamLogDir: './logs/stream/',
+        streamPushIntervalMs: 2000,
+        streamPushMinIntervalMs: 500,
       };
 
       const runTests = async () => {

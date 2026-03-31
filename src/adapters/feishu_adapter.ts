@@ -161,6 +161,9 @@ async function runTest(): Promise<void> {
     logLevel: 'debug',
     logDir: './logs',
     sessionTimeoutMs: 600000,
+    streamLogDir: './logs/stream/',
+    streamPushIntervalMs: 2000,
+    streamPushMinIntervalMs: 500,
   };
 
   const adapter = createFeishuAdapter(testConfig, mockBot);

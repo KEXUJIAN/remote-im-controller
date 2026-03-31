@@ -49,6 +49,9 @@ function loadConfig(): Config {
     logDir: process.env.LOG_DIR || './logs',
     sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
     ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
+    streamLogDir: process.env.STREAM_LOG_DIR || './logs/stream/',
+    streamPushIntervalMs: parseInt(process.env.STREAM_PUSH_INTERVAL_MS || '2000', 10),
+    streamPushMinIntervalMs: parseInt(process.env.STREAM_PUSH_MIN_INTERVAL_MS || '500', 10),
   };
 
   logger.info('loadConfig', '配置加载完成', {
