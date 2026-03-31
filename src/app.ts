@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
   const config = loadConfig();
 
-  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug);
+  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir);
   const commandRouter = createCommandRouter({ tmuxManager });
   const feishuBot = createFeishuBot(config);
 

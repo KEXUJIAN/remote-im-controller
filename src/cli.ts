@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   const stateManager = createStateManager();
-  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug);
+  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir);
   const commandRouter = createCommandRouter({ tmuxManager });
   const lastSessionMap = new Map<string, string>();
   const adapter = createLocalAdapter();

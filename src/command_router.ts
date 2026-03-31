@@ -273,7 +273,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
 if (process.argv[2] === 'test') {
   import('./tmux_manager.js')
     .then(({ createTmuxManager }) => {
-      const tmuxManager = createTmuxManager(50);
+      const tmuxManager = createTmuxManager(50, false, './logs/stream/');
       const router = createCommandRouter({ tmuxManager });
 
       const mockConfig = {

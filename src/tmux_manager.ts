@@ -4,6 +4,8 @@
 
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
+import { mkdir, writeFile, unlink } from 'fs/promises';
+import { resolve } from 'path';
 import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
 import type { TmuxCaptureResult } from './types.js';
@@ -20,14 +22,21 @@ export interface TmuxManager {
   captureScreen(name: string, lines?: number): Promise<TmuxCaptureResult>;
   sessionExists(name: string): Promise<boolean>;
   getPaneCommand(name: string): Promise<string>;
+  /** 获取 pipe-pane 日志文件路径 */
+  getPipeLogPath(name: string): string | undefined;
 }
 
-export function createTmuxManager(defaultLines: number, debug: boolean = false): TmuxManager {
+export function createTmuxManager(
+  defaultLines: number,
+  debug: boolean = false,
+  streamLogDir: string = './logs/stream/'
+): TmuxManager {
   const debugArgs = debug ? ['-v', '-v'] : [];
   const tmuxTmpDir = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
+  const activePipes = new Map<string, string>();
 
   function execTmux(args: string[]): Promise<string> {
-    return new Promise((resolve, reject) => {
+    return new Promise((res, reject) => {
       const proc = spawn('tmux', [...debugArgs, ...args], {
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: debug ? tmuxTmpDir : undefined,
@@ -55,9 +64,49 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
           return;
         }
         logger.debug('exec', `tmux command succeeded: tmux ${args.join(' ')}`, { stdoutLength: stdout.length });
-        resolve(stdout);
+        res(stdout);
       });
     });
+  }
+
+  async function setupPipePane(session: string): Promise<void> {
+    logger.debug('setupPipePane', `设置 pipe-pane: ${session}`);
+    
+    await execTmux(['pipe-pane', '-t', session]);
+    
+    const absoluteStreamLogDir = resolve(streamLogDir);
+    await mkdir(absoluteStreamLogDir, { recursive: true });
+    
+    const logFilePath = `${absoluteStreamLogDir}/${session}.log`;
+    await writeFile(logFilePath, '');
+    
+    await execTmux(['pipe-pane', '-o', '-t', session, `exec cat >> '${logFilePath}'`]);
+    
+    await new Promise((r) => setTimeout(r, 50));
+    
+    activePipes.set(session, logFilePath);
+    logger.info('setupPipePane', `pipe-pane 已启动: ${session}`, { logFilePath });
+  }
+
+  async function teardownPipePane(session: string): Promise<void> {
+    logger.debug('teardownPipePane', `停止 pipe-pane: ${session}`);
+    
+    const logFilePath = activePipes.get(session);
+    
+    await execTmux(['pipe-pane', '-t', session]).catch((err) => {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.debug('teardownPipePane', `停止 pipe-pane 时出错（可能已停止）: ${errMsg}`);
+    });
+    
+    activePipes.delete(session);
+    
+    if (logFilePath) {
+      await unlink(logFilePath).catch((err) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.debug('teardownPipePane', `删除日志文件时出错（可能已删除）: ${errMsg}`);
+      });
+      logger.info('teardownPipePane', `pipe-pane 已停止: ${session}`, { logFilePath });
+    }
   }
 
   return {
@@ -77,6 +126,7 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
       logger.info('createSession', `创建 tmux 会话: ${name}`);
       try {
         await execTmux(['new-session', '-d', '-s', name]);
+        await setupPipePane(name);
         logger.info('createSession', `会话创建成功: ${name}`);
       } catch (err) {
         logger.error('createSession', `创建会话失败: ${name}`, err);
@@ -87,6 +137,7 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
     async killSession(name: string): Promise<void> {
       logger.info('killSession', `终止 tmux 会话: ${name}`);
       try {
+        await teardownPipePane(name);
         await execTmux(['kill-session', '-t', name]);
         logger.info('killSession', `会话已终止: ${name}`);
       } catch (err) {
@@ -160,6 +211,10 @@ export function createTmuxManager(defaultLines: number, debug: boolean = false):
         return '';
       }
     },
+
+    getPipeLogPath(name: string): string | undefined {
+      return activePipes.get(name);
+    },
   };
 }
 
@@ -172,7 +227,8 @@ if (process.argv[2] === 'test') {
   });
 
   const debug = process.env.TMUX_DEBUG === 'true';
-  const manager = createTmuxManager(50, debug);
+  const streamLogDir = './logs/stream/';
+  const manager = createTmuxManager(50, debug, streamLogDir);
 
   const runTests = async () => {
     console.log('=== TmuxManager 测试 ===\n');
@@ -208,7 +264,22 @@ if (process.argv[2] === 'test') {
     const exists = await manager.sessionExists(testSessionName);
     console.log(`   ${exists ? '✓ 存在' : '✗ 不存在'}\n`);
 
-    console.log(`5. 向会话 "${testSessionName}" 发送命令 "echo hello"...`);
+    console.log(`5. 测试 pipe-pane 日志文件...`);
+    const pipeLogPath = manager.getPipeLogPath(testSessionName);
+    if (pipeLogPath) {
+      console.log(`   ✓ getPipeLogPath 返回路径: ${pipeLogPath}`);
+      const { existsSync } = await import('fs');
+      if (existsSync(pipeLogPath)) {
+        console.log('   ✓ 日志文件存在');
+      } else {
+        console.log('   ✗ 日志文件不存在');
+      }
+    } else {
+      console.log('   ✗ getPipeLogPath 返回 undefined');
+    }
+    console.log();
+
+    console.log(`6. 向会话 "${testSessionName}" 发送命令 "echo hello"...`);
     try {
       await manager.sendCommand(testSessionName, 'echo hello');
       await new Promise((r) => setTimeout(r, 500));
@@ -217,7 +288,7 @@ if (process.argv[2] === 'test') {
       console.log('   ✗ 发送失败:', err instanceof Error ? err.message : err);
     }
 
-    console.log(`6. 抓取会话 "${testSessionName}" 的屏幕...`);
+    console.log(`7. 抓取会话 "${testSessionName}" 的屏幕...`);
     try {
       const result = await manager.captureScreen(testSessionName, 10);
       console.log(`   ✓ 抓取成功 (${result.lines} 行, hash: ${result.hash.slice(0, 8)}...)`);
@@ -228,7 +299,7 @@ if (process.argv[2] === 'test') {
       console.log('   ✗ 抓取失败:', err instanceof Error ? err.message : err);
     }
 
-    console.log(`7. 终止测试会话 "${testSessionName}"...`);
+    console.log(`8. 终止测试会话 "${testSessionName}"...`);
     console.log('   等待 3 秒，可在另一个终端 attach 观察...');
     await new Promise((r) => setTimeout(r, 3000));
     try {
@@ -238,9 +309,31 @@ if (process.argv[2] === 'test') {
       console.log('   ✗ 终止失败:', err instanceof Error ? err.message : err);
     }
 
-    console.log(`8. 确认会话 "${testSessionName}" 已不存在...`);
+    console.log(`9. 确认会话 "${testSessionName}" 已不存在...`);
     const stillExists = await manager.sessionExists(testSessionName);
     console.log(`   ${!stillExists ? '✓ 已删除' : '✗ 仍存在'}\n`);
+
+    console.log(`10. 测试 pipe-pane 清理...`);
+    const pipeLogPathAfterKill = manager.getPipeLogPath(testSessionName);
+    if (pipeLogPathAfterKill === undefined) {
+      console.log('   ✓ getPipeLogPath 返回 undefined');
+    } else {
+      console.log(`   ✗ getPipeLogPath 仍返回路径: ${pipeLogPathAfterKill}`);
+    }
+    
+    const { existsSync: existsSync2, unlinkSync } = await import('fs');
+    if (pipeLogPath && !existsSync2(pipeLogPath)) {
+      console.log('   ✓ 日志文件已删除');
+    } else if (pipeLogPath) {
+      console.log('   ✗ 日志文件仍存在，尝试清理...');
+      try {
+        unlinkSync(pipeLogPath);
+        console.log('   ✓ 手动清理成功');
+      } catch {
+        console.log('   ! 手动清理失败');
+      }
+    }
+    console.log();
 
     console.log('=== 所有测试完成 ===');
   };

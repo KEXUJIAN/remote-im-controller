@@ -380,6 +380,7 @@ if (process.argv[2] === 'test') {
     async captureScreen() { return { raw: 'test output', cleaned: 'test output', lines: 1, hash: 'abc123' }; },
     async sessionExists(name: string) { return name === 'test-session'; },
     async getPaneCommand() { return 'zsh'; },
+    getPipeLogPath() { return undefined; },
   };
 
   const mockConfig: Config = {
