@@ -9,12 +9,14 @@ import type {
   MenuEventPayload,
   Config,
   CommandContext,
+  StreamConsumer,
 } from './types.js';
 import type { StateManager } from './state_manager.js';
 import type { CommandRouter } from './command_router.js';
 import type { TmuxManager } from './tmux_manager.js';
 import type { CoreProcessor } from './adapters/adapter.js';
 import { parseCommand } from './command_parser.js';
+import { createStreamConsumer } from './stream_consumer.js';
 
 const logger = createLogger('core_processor');
 
@@ -102,6 +104,106 @@ async function captureWithPoll(
 
     await new Promise((r) => setTimeout(r, pollInterval));
   }
+}
+
+/**
+ * 流式轮询输出
+ * - 使用 StreamConsumer 增量读取 pipe-pane 日志
+ * - 保持进程检测逻辑判断命令是否完成
+ * - 超时后停止流式消费
+ */
+async function streamWithPoll(
+  tmuxManager: TmuxManager,
+  sessionName: string,
+  config: Config,
+  sendMessage: (chatId: string, message: string) => Promise<void>,
+  chatId: string
+): Promise<void> {
+  const logFilePath = tmuxManager.getPipeLogPath(sessionName);
+
+  // 无 pipe-pane 日志，回退到 captureWithPoll
+  if (!logFilePath) {
+    logger.debug('streamWithPoll', '无 pipe 日志，回退到 captureWithPoll', { sessionName });
+    const result = await captureWithPoll(
+      tmuxManager,
+      sessionName,
+      config.tmuxDefaultLines,
+      config.pollInterval,
+      config.pollTimeout,
+      await tmuxManager.getPaneCommand(sessionName),
+      config.pollFinalDelay,
+      config.pollTimeoutCheckCount
+    );
+    let output = result.cleaned;
+    if (result.timeout && result.stillRunning) {
+      output = `⏱️ 等待超时 (${Math.round(result.elapsed / 1000)}s)\n⚠️ 命令可能仍在运行中\n💡 可调大 POLL_TIMEOUT 环境变量\n\n${output}`;
+    }
+    await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
+    return;
+  }
+
+  // 间隔警告
+  if (config.streamPushIntervalMs < config.streamPushMinIntervalMs) {
+    logger.warn('streamWithPoll', '推送间隔过小，可能触发飞书限流', {
+      intervalMs: config.streamPushIntervalMs,
+      minIntervalMs: config.streamPushMinIntervalMs,
+    });
+  }
+
+  const originalCmd = await tmuxManager.getPaneCommand(sessionName);
+  const startTime = Date.now();
+  let consumer: StreamConsumer | null = null;
+
+  return new Promise((resolve) => {
+    consumer = createStreamConsumer({
+      logFilePath,
+      pushCallback: async (chunk: string) => {
+        if (chunk.trim()) {
+          await sendMessage(chatId, `\`\`\`\n${chunk}\`\`\``);
+        }
+      },
+      intervalMs: config.streamPushIntervalMs,
+    });
+
+    logger.info('streamWithPoll', '开始流式消费', { sessionName, logFilePath });
+    consumer.start();
+
+    // 进程完成检测轮询
+    const pollTimer = setInterval(async () => {
+      try {
+        const currentCmd = await tmuxManager.getPaneCommand(sessionName);
+        const elapsed = Date.now() - startTime;
+
+        if (currentCmd === originalCmd) {
+          clearInterval(pollTimer);
+          consumer?.stop();
+          await consumer?.destroy();
+          logger.info('streamWithPoll', '命令完成', { sessionName, elapsed });
+          await sendMessage(chatId, '✅ 执行完毕');
+          resolve();
+        } else if (elapsed >= config.pollTimeout) {
+          clearInterval(pollTimer);
+          consumer?.stop();
+          await consumer?.destroy();
+          logger.warn('streamWithPoll', '流式消费超时', { sessionName, elapsed });
+          await sendMessage(chatId, `⏱️ 超时 (${Math.round(elapsed / 1000)}s)，命令可能仍在运行`);
+          resolve();
+        }
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        logger.error('streamWithPoll', '轮询检测失败', error, { sessionName });
+      }
+    }, config.pollInterval);
+
+    // 超时保护：确保定时器最终被清理
+    setTimeout(() => {
+      if (consumer) {
+        clearInterval(pollTimer);
+        consumer.stop();
+        consumer.destroy().catch(() => {});
+      }
+    }, config.pollTimeout + 5000);
+  });
 }
 
 /** 核心处理器依赖 */
@@ -198,31 +300,12 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         return;
       }
 
-      // 记录原始命令
-      const originalCmd = await tmuxManager.getPaneCommand(sessionName);
-
       // 发送命令到 tmux
       logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
       await tmuxManager.sendCommand(sessionName, text);
 
-      // 轮询等待屏幕稳定
-      const result = await captureWithPoll(
-        tmuxManager,
-        sessionName,
-        config.tmuxDefaultLines,
-        config.pollInterval,
-        config.pollTimeout,
-        originalCmd,
-        config.pollFinalDelay,
-        config.pollTimeoutCheckCount
-      );
-
-      let output = result.cleaned;
-      if (result.timeout && result.stillRunning) {
-        output = `⏱️ 等待超时 (${Math.round(result.elapsed / 1000)}s)\n⚠️ 命令可能仍在运行中\n💡 可调大 POLL_TIMEOUT 环境变量\n\n${output}`;
-      }
-
-      await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
+      // 使用流式轮询输出（内部会根据是否有 pipe 日志选择模式）
+      await streamWithPoll(tmuxManager, sessionName, config, sendMessage, chatId);
     }
   }
 
