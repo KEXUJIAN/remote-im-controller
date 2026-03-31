@@ -241,8 +241,9 @@ export function createStreamConsumer(options: StreamConsumerOptions): StreamCons
 }
 
 // ============ 内联测试 ============
+// 仅当文件被直接执行时运行测试（非导入时）
 
-if (process.argv[2] === 'test') {
+if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test') {
   const { writeFileSync, mkdirSync, rmSync, existsSync: fileExists } = await import('fs');
   const { join } = await import('path');
 
