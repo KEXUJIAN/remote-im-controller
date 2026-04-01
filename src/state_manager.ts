@@ -20,6 +20,8 @@ export interface StateManager {
   getState(chatId: string): ChatState;
   /** 切换状态并更新最后活动时间 */
   transition(chatId: string, newState: Partial<ChatState>): void;
+  /** 续期：仅更新最后活动时间 */
+  renewActivity(chatId: string): void;
   /** 检查是否超时 */
   checkTimeout(chatId: string, timeoutMs: number): boolean;
   /** 重置状态为 COMMAND 模式 */
@@ -59,6 +61,14 @@ export function createStateManager(): StateManager {
         to: updated.mode,
         activeSession: updated.activeSession,
       });
+    },
+
+    renewActivity(chatId: string): void {
+      const state = states.get(chatId);
+      if (state) {
+        states.set(chatId, { ...state, lastActivityTime: Date.now() });
+        logger.debug('renewActivity', `续期: ${chatId}`);
+      }
     },
 
     checkTimeout(chatId: string, timeoutMs: number): boolean {
@@ -192,6 +202,32 @@ if (process.argv[2] === 'test') {
       process.exit(1);
     }
 
-    console.log('=== 所有测试完成 ===');
+    // 8. 测试 renewActivity 方法
+    console.log('8. 测试 renewActivity 方法...');
+    const renewChatId = 'renew-chat-001';
+    manager.transition(renewChatId, { mode: 'SESSION', activeSession: 'test-session' });
+    const beforeRenewTime = manager.getState(renewChatId).lastActivityTime;
+    wait(10).then(() => {
+      manager.renewActivity(renewChatId);
+      const afterRenewTime = manager.getState(renewChatId).lastActivityTime;
+      const afterRenewState = manager.getState(renewChatId);
+      console.log(`   续期前时间: ${beforeRenewTime}`);
+      console.log(`   续期后时间: ${afterRenewTime}`);
+      console.log(`   续期后模式: ${afterRenewState.mode}`);
+      console.log(`   续期后会话: ${afterRenewState.activeSession}`);
+      if (afterRenewTime > beforeRenewTime && afterRenewState.mode === 'SESSION' && afterRenewState.activeSession === 'test-session') {
+        console.log('   ✓ renewActivity 成功更新时间，状态未改变\n');
+      } else {
+        console.log('   ✗ renewActivity 失败\n');
+        process.exit(1);
+      }
+
+      // 9. 测试 renewActivity 对不存在的 chatId 无操作
+      console.log('9. 测试 renewActivity 对不存在的 chatId...');
+      manager.renewActivity('nonexistent-chat');
+      console.log('   ✓ 无报错\n');
+
+      console.log('=== 所有测试完成 ===');
+    });
   });
 }
