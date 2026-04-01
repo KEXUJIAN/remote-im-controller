@@ -137,6 +137,18 @@ npm run test:tmux
 # 测试飞书通信模块（模拟模式）
 npm run test:feishu
 
+# 测试状态机模块
+npm run test:state
+
+# 测试核心处理器
+npm run test:core
+
+# 测试流式消费者模块
+npm run test:stream
+
+# 测试 Session 输出管理模块
+npm run test:output
+
 # 类型检查
 npm run typecheck
 ```
@@ -154,13 +166,19 @@ remote-im-controller/
 │   ├── COMMAND_DESIGN.md   # 指令系统设计
 │   └── ARCHITECTURE.md     # 架构说明
 ├── src/
-│   ├── app.ts              # 主入口
+│   ├── app.ts              # 主入口（飞书模式）
+│   ├── cli.ts              # CLI 入口（本地测试）
+│   ├── types.ts            # 类型定义
+│   ├── logger.ts           # 日志模块
+│   ├── state_manager.ts    # 状态机模块
+│   ├── core_processor.ts   # 核心处理器
 │   ├── tmux_manager.ts     # tmux 控制
 │   ├── command_parser.ts   # 指令解析
 │   ├── command_router.ts   # 指令路由
 │   ├── feishu_bot.ts       # 飞书通信
-│   ├── logger.ts           # 日志模块
-│   └── types.ts            # 类型定义
+│   ├── stream_consumer.ts  # 流式消费者
+│   ├── session_output_manager.ts # Session 输出管理
+│   └── adapters/           # 适配器模块
 ├── dist/                   # 编译输出
 └── logs/                   # 日志目录
 ```

@@ -27,6 +27,8 @@ npm run test:tmux      # 测试 tmux 控制模块
 npm run test:feishu    # 测试飞书通信模块
 npm run test:state     # 测试状态机模块
 npm run test:core      # 测试核心处理器
+npm run test:stream    # 测试流式消费者模块
+npm run test:output    # 测试 Session 输出管理模块
 ```
 
 **运行单个测试**：直接执行对应命令，测试逻辑在模块末尾的 `if (process.argv[2] === 'test')` 块中。
@@ -208,20 +210,22 @@ export function tokenize(body: string): string[] { /* ... */ }
 
 ```
 src/
-├── app.ts              # 主入口（飞书模式）
-├── cli.ts              # 本地 CLI 入口
-├── types.ts            # 类型定义、自定义错误类
-├── logger.ts           # 日志模块（文件 + 控制台）
-├── state_manager.ts    # 状态机模块（COMMAND/SESSION 模式）
-├── core_processor.ts   # 核心处理器（消息路由 + 轮询等待）
-├── tmux_manager.ts     # tmux 控制模块
-├── command_parser.ts   # 指令解析模块
-├── command_router.ts   # 指令路由模块
-├── feishu_bot.ts       # 飞书通信模块
+├── app.ts                    # 主入口（飞书模式）
+├── cli.ts                    # 本地 CLI 入口
+├── types.ts                  # 类型定义、自定义错误类
+├── logger.ts                 # 日志模块（文件 + 控制台）
+├── state_manager.ts          # 状态机模块（COMMAND/SESSION 模式）
+├── core_processor.ts         # 核心处理器（消息路由 + 轮询等待）
+├── tmux_manager.ts           # tmux 控制模块
+├── command_parser.ts         # 指令解析模块
+├── command_router.ts         # 指令路由模块
+├── feishu_bot.ts             # 飞书通信模块
+├── stream_consumer.ts        # 流式消费者模块
+├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
 └── adapters/
-    ├── adapter.ts          # 适配器接口
-    ├── feishu_adapter.ts   # 飞书适配器
-    └── local_adapter.ts    # 本地适配器（CLI）
+    ├── adapter.ts            # 适配器接口
+    ├── feishu_adapter.ts     # 飞书适配器
+    └── local_adapter.ts      # 本地适配器（CLI）
 ```
 
 ## 环境变量

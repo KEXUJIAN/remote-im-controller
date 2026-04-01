@@ -76,6 +76,8 @@
 | **command_router** | `src/command_router.ts` | 路由指令到处理器 |
 | **state_manager** | `src/state_manager.ts` | 状态机管理（COMMAND/SESSION 模式） |
 | **core_processor** | `src/core_processor.ts` | 核心处理器，统一消息路由 |
+| **stream_consumer** | `src/stream_consumer.ts` | 流式消费者，增量读取日志文件 |
+| **session_output_manager** | `src/session_output_manager.ts` | Session 输出管理，offset 追踪 |
 | **feishu_bot** | `src/feishu_bot.ts` | 飞书 WSS 连接和消息发送 |
 | **adapters/adapter** | `src/adapters/adapter.ts` | 适配器接口定义 |
 | **adapters/feishu_adapter** | `src/adapters/feishu_adapter.ts` | 飞书适配器实现 |
@@ -393,12 +395,17 @@ app.ts (飞书模式)
   │     ├── command_router.ts
   │     │     └── command_parser.ts
   │     └── tmux_manager.ts
+  │           ├── session_output_manager.ts
+  │           └── stream_consumer.ts
   └── logger.ts
 
 cli.ts (本地测试)
   ├── local_adapter.ts
   │     └── adapter.ts (接口)
   ├── core_processor.ts
+  │     └── tmux_manager.ts
+  │           ├── session_output_manager.ts
+  │           └── stream_consumer.ts
   └── logger.ts
 ```
 
@@ -414,6 +421,8 @@ npm run test:tmux        # tmux 管理器
 npm run test:feishu      # 飞书模块
 npm run test:state       # 状态机
 npm run test:core        # 核心处理器
+npm run test:stream      # 流式消费者
+npm run test:output      # Session 输出管理
 
 # 本地 CLI 测试
 npm run local
