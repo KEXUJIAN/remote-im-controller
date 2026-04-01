@@ -201,6 +201,10 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       // 记录原始命令
       const originalCmd = await tmuxManager.getPaneCommand(sessionName);
 
+      // 获取 outputManager 并重置 offset
+      const outputManager = tmuxManager.getOutputManager();
+      const offset = outputManager.resetOffset(sessionName);
+
       // 发送命令到 tmux
       logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
       await tmuxManager.sendCommand(sessionName, text);
@@ -217,7 +221,8 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         config.pollTimeoutCheckCount
       );
 
-      let output = result.cleaned;
+      // 从 pipe-pane 日志读取新增输出
+      let output = outputManager.readNewOutput(sessionName, offset);
       if (result.timeout && result.stillRunning) {
         output = `⏱️ 等待超时 (${Math.round(result.elapsed / 1000)}s)\n⚠️ 命令可能仍在运行中\n💡 可调大 POLL_TIMEOUT 环境变量\n\n${output}`;
       }
@@ -388,6 +393,15 @@ if (process.argv[2] === 'test') {
     async sessionExists(name: string) { return name === 'test-session'; },
     async getPaneCommand() { return 'zsh'; },
     getPipeLogPath() { return undefined; },
+    getOutputManager() { 
+      return {
+        initOffset: () => {},
+        resetOffset: () => 0,
+        readNewOutput: () => 'test output',
+        clearOffset: () => {},
+        hasOffset: () => false,
+      };
+    },
   };
 
   const mockConfig: Config = {

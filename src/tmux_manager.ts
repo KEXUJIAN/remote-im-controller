@@ -8,6 +8,7 @@ import { mkdir, writeFile, unlink } from 'fs/promises';
 import { resolve } from 'path';
 import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
+import { createSessionOutputManager, type SessionOutputManager } from './session_output_manager.js';
 import type { TmuxCaptureResult } from './types.js';
 import { TmuxNotAvailableError } from './types.js';
 
@@ -22,8 +23,8 @@ export interface TmuxManager {
   captureScreen(name: string, lines?: number): Promise<TmuxCaptureResult>;
   sessionExists(name: string): Promise<boolean>;
   getPaneCommand(name: string): Promise<string>;
-  /** 获取 pipe-pane 日志文件路径 */
   getPipeLogPath(name: string): string | undefined;
+  getOutputManager(): SessionOutputManager;
 }
 
 export function createTmuxManager(
@@ -34,6 +35,10 @@ export function createTmuxManager(
   const debugArgs = debug ? ['-v', '-v'] : [];
   const tmuxTmpDir = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
   const activePipes = new Map<string, string>();
+  
+  const outputManager = createSessionOutputManager({
+    getLogPath: (sessionName: string) => activePipes.get(sessionName),
+  });
 
   function execTmux(args: string[]): Promise<string> {
     return new Promise((res, reject) => {
@@ -127,6 +132,7 @@ export function createTmuxManager(
       try {
         await execTmux(['new-session', '-d', '-s', name]);
         await setupPipePane(name);
+        outputManager.initOffset(name);
         logger.info('createSession', `会话创建成功: ${name}`);
       } catch (err) {
         logger.error('createSession', `创建会话失败: ${name}`, err);
@@ -138,6 +144,7 @@ export function createTmuxManager(
       logger.info('killSession', `终止 tmux 会话: ${name}`);
       try {
         await teardownPipePane(name);
+        outputManager.clearOffset(name);
         await execTmux(['kill-session', '-t', name]);
         logger.info('killSession', `会话已终止: ${name}`);
       } catch (err) {
@@ -214,6 +221,10 @@ export function createTmuxManager(
 
     getPipeLogPath(name: string): string | undefined {
       return activePipes.get(name);
+    },
+
+    getOutputManager(): SessionOutputManager {
+      return outputManager;
     },
   };
 }
