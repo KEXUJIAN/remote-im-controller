@@ -5,15 +5,13 @@
  */
 
 import { statSync, openSync, readSync, closeSync, existsSync } from 'fs';
+import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('session_output_manager');
 
 /** 默认最大输出大小 (100KB) */
 const DEFAULT_MAX_OUTPUT_SIZE = 100 * 1024;
-
-/** ANSI 代码正则表达式 */
-const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
 
 /**
  * Session 输出管理器接口
@@ -65,10 +63,38 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
   const sessionStates = new Map<string, SessionState>();
   
   /**
-   * 剥离 ANSI 代码
+   * 清理终端控制序列（比 strip-ansi 更完整）
    */
-  function stripAnsi(str: string): string {
-    return str.replace(ANSI_REGEX, '');
+  function cleanTerminalOutput(str: string): string {
+    let result = str;
+    
+    // 1. 先处理 OSC 序列（必须在 stripAnsi 之前）
+    // OSC 格式：\x1b] <command> ; <param> \x07 或 \x1b\\
+    result = result.replace(/\x1b\][^\x07]*\x07/g, '');
+    result = result.replace(/\x1b\][^\x1b]*\x1b\\/g, '');
+    result = result.replace(/\x1bk[^\x1b]*\x1b\\/g, '');
+    
+    // 2. 处理私有模式序列（必须在 stripAnsi 之前，因为可能有或没有 \x1b 前缀）
+    result = result.replace(/\x1b\[\?[0-9;]*[hl]/g, '');
+    result = result.replace(/\[\?[0-9;]*[hl]/g, '');
+    
+    // 3. 处理其他控制字符（必须在 stripAnsi 之前）
+    result = result.replace(/\x1b[=>]/g, '');  // \x1b= 和 \x1b>
+    result = result.replace(/\x1b\[[0-9;]*[JK]/g, '');  // 清屏序列
+    
+    // 4. 使用 strip-ansi 处理标准 ANSI 序列
+    result = stripAnsi(result);
+    
+    // 5. 处理退格符（删除前一个字符）
+    while (result.includes('\x08')) {
+      result = result.replace(/[^\x08]\x08/g, '');
+    }
+    result = result.replace(/\x08+/g, '');
+    
+    // 6. 处理回车符（移除所有 \r）
+    result = result.replace(/\r/g, '');
+    
+    return result;
   }
   
   /**
@@ -233,8 +259,8 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       });
     }
     
-    // 剥离 ANSI 代码
-    content = stripAnsi(content);
+    // 清理终端控制序列
+    content = cleanTerminalOutput(content);
     
     // 处理行缓冲
     if (state) {
@@ -499,6 +525,107 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     return true;
   }
   
+  /**
+   * 测试 6：OSC 序列清理
+   */
+  function testOscSequenceCleanup(): boolean {
+    console.log('\n测试 6：OSC 序列清理');
+    
+    // 清理并重新创建文件
+    rmSync(testDir, { recursive: true });
+    mkdirSync(testDir, { recursive: true });
+    
+    const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+    
+    writeFileSync(testLogFile, '', 'utf8');
+    manager.initOffset('test-session');
+    const offset = manager.resetOffset('test-session');
+    
+    // 写入包含 OSC 序列的内容
+    // OSC 设置标题: \x1b]0;title\x07 或 \x1b]7;file://...\x1b\\
+    writeFileSync(testLogFile, '\x1b]0;my-title\x07正常内容\n\x1b]7;file:///path\x1b\\\n', { encoding: 'utf8', flag: 'a' });
+    
+    const output = manager.readNewOutput('test-session', offset);
+    
+    console.log(`  输出: ${JSON.stringify(output)}`);
+    
+    // 验证：OSC 序列应被移除
+    if (!output.includes('\x1b]') && output.includes('正常内容')) {
+      console.log('  ✓ 通过：OSC 序列已清理');
+      return true;
+    } else {
+      console.log('  ✗ 失败：OSC 序列未正确清理');
+      return false;
+    }
+  }
+  
+  /**
+   * 测试 7：退格符处理
+   */
+  function testBackspaceHandling(): boolean {
+    console.log('\n测试 7：退格符处理');
+    
+    // 清理并重新创建文件
+    rmSync(testDir, { recursive: true });
+    mkdirSync(testDir, { recursive: true });
+    
+    const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+    
+    writeFileSync(testLogFile, '', 'utf8');
+    manager.initOffset('test-session');
+    const offset = manager.resetOffset('test-session');
+    
+    // 写入包含退格符的内容（模拟 zsh 回显：l + 退格 + ll = 最终显示 ll）
+    writeFileSync(testLogFile, 'l\x08ll\n', { encoding: 'utf8', flag: 'a' });
+    
+    const output = manager.readNewOutput('test-session', offset);
+    
+    console.log(`  输出: ${JSON.stringify(output)}`);
+    
+    // 验证：退格符应被正确处理，输出 "ll"
+    if (output.includes('ll') && !output.includes('\x08')) {
+      console.log('  ✓ 通过：退格符已正确处理');
+      return true;
+    } else {
+      console.log('  ✗ 失败：退格符处理有问题');
+      return false;
+    }
+  }
+  
+  /**
+   * 测试 8：私有模式序列清理
+   */
+  function testPrivateModeSequenceCleanup(): boolean {
+    console.log('\n测试 8：私有模式序列清理');
+    
+    // 清理并重新创建文件
+    rmSync(testDir, { recursive: true });
+    mkdirSync(testDir, { recursive: true });
+    
+    const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+    
+    writeFileSync(testLogFile, '', 'utf8');
+    manager.initOffset('test-session');
+    const offset = manager.resetOffset('test-session');
+    
+    // 写入包含私有模式序列的内容（如 bracket paste mode）
+    // 注意：这些序列可能在日志中没有 \x1b 前缀
+    writeFileSync(testLogFile, '[?2004h[?1l正常输出\n', { encoding: 'utf8', flag: 'a' });
+    
+    const output = manager.readNewOutput('test-session', offset);
+    
+    console.log(`  输出: ${JSON.stringify(output)}`);
+    
+    // 验证：私有模式序列应被移除
+    if (!output.includes('[?2004') && !output.includes('[?1l') && output.includes('正常输出')) {
+      console.log('  ✓ 通过：私有模式序列已清理');
+      return true;
+    } else {
+      console.log('  ✗ 失败：私有模式序列未正确清理');
+      return false;
+    }
+  }
+  
   // 运行所有测试
   try {
     if (testBasicReadWrite()) testPassed++; else testFailed++;
@@ -506,6 +633,9 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     if (testAnsiStrip()) testPassed++; else testFailed++;
     if (testLineBuffer()) testPassed++; else testFailed++;
     if (testClearOffset()) testPassed++; else testFailed++;
+    if (testOscSequenceCleanup()) testPassed++; else testFailed++;
+    if (testBackspaceHandling()) testPassed++; else testFailed++;
+    if (testPrivateModeSequenceCleanup()) testPassed++; else testFailed++;
     
     console.log(`\n=== 测试结果 ===`);
     console.log(`通过: ${testPassed}`);
