@@ -85,6 +85,21 @@ async function main(): Promise<void> {
   logger.info('main', '检查 tmux 可用性...');
   await tmuxManager.checkAvailable();
 
+  setInterval(() => {
+    for (const userId of stateManager.getAllStates()) {
+      const state = stateManager.getState(userId);
+      if (state.mode !== 'SESSION') {
+        continue;
+      }
+      if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
+        const sessionName = state.activeSession;
+        stateManager.resetState(userId);
+        logger.info('timeout', `SESSION 模式超时退出`, { userId, sessionName });
+        console.log(`⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式：${sessionName}`);
+      }
+    }
+  }, 10 * 1000);
+
   logger.info('main', '启动本地适配器...');
   await adapter.start(processor);
 
