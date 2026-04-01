@@ -110,6 +110,20 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 超时与续期机制
+
+SESSION 模式下有超时保护，防止用户忘记退出：
+
+- **超时检测**：每 10 秒检查一次 `lastActivityTime`
+- **超时退出**：超过 `SESSION_TIMEOUT_MS` 无操作自动退回 COMMAND 模式
+- **续期触发**：SESSION 模式下每次处理消息后调用 `renewActivity()` 更新 `lastActivityTime`
+
+| 触发点 | 续期方法 |
+|--------|----------|
+| SESSION 模式收到 TEXT 消息并处理完成 | `stateManager.renewActivity(userId)` |
+| CARD_EVENT 进入 SESSION 模式 | `stateManager.transition()` 自动更新 |
+| MENU_EVENT 退出 SESSION 模式 | `stateManager.resetState()` 自动更新 |
+
 ### 消息路由
 
 ```
