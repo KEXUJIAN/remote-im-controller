@@ -223,6 +223,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       }
 
       await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
+      stateManager.renewActivity(userId);
     }
   }
 
@@ -344,6 +345,12 @@ if (process.argv[2] === 'test') {
       const current = this.getState(userId);
       const updated = { ...current, ...newState, lastActivityTime: Date.now() };
       mockStateMap.set(userId, updated);
+    },
+    renewActivity(userId: string) {
+      const state = mockStateMap.get(userId);
+      if (state) {
+        mockStateMap.set(userId, { ...state, lastActivityTime: Date.now() });
+      }
     },
     checkTimeout(_userId: string, _timeoutMs: number) {
       return false;
