@@ -27,7 +27,6 @@ npm run test:tmux      # 测试 tmux 控制模块
 npm run test:feishu    # 测试飞书通信模块
 npm run test:state     # 测试状态机模块
 npm run test:core      # 测试核心处理器
-npm run test:stream    # 测试流式消费者模块
 npm run test:output    # 测试 Session 输出管理模块
 ```
 
@@ -134,11 +133,13 @@ export function createTmuxManager(defaultLines: number, debug?: boolean): TmuxMa
 ### 类型定义
 
 - 类型集中在 `src/types.ts`
+- 自定义错误类在 `src/errors.ts`
 - 使用 `interface` 定义对象结构
 - 使用 `type` 定义联合类型、工具类型
 - JSDoc 注释使用中文
 
 ```typescript
+// src/types.ts
 export interface Config {
   /** 飞书应用 ID */
   feishuAppId: string;
@@ -147,13 +148,8 @@ export interface Config {
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-```
 
-### 错误处理
-
-**自定义错误类**：继承 `Error`，添加上下文属性
-
-```typescript
+// src/errors.ts
 export class SessionNotFoundError extends Error {
   constructor(
     public sessionName: string,
@@ -165,10 +161,30 @@ export class SessionNotFoundError extends Error {
 }
 ```
 
-**错误转换**：始终转换为 `Error` 实例
+### 错误处理
+
+**自定义错误类**：继承 `Error`，添加上下文属性，定义在 `src/errors.ts`
 
 ```typescript
-const error = err instanceof Error ? err : new Error(String(err));
+// src/errors.ts
+export class SessionNotFoundError extends Error {
+  constructor(
+    public sessionName: string,
+    public availableSessions: string[] = []
+  ) {
+    super(`tmux session '${sessionName}' not found`);
+    this.name = 'SessionNotFoundError';
+  }
+}
+```
+
+**错误转换工具**：使用 `src/utils/error.ts` 中的工具函数
+
+```typescript
+import { toError, toErrorMessage } from './utils/error.js';
+
+const error = toError(err);
+const errMsg = toErrorMessage(err);
 ```
 
 **禁止空 catch 块**
@@ -212,7 +228,10 @@ export function tokenize(body: string): string[] { /* ... */ }
 src/
 ├── app.ts                    # 主入口（飞书模式）
 ├── cli.ts                    # 本地 CLI 入口
-├── types.ts                  # 类型定义、自定义错误类
+├── config.ts                 # 配置加载模块
+├── types.ts                  # 类型定义
+├── errors.ts                 # 自定义错误类
+├── test_utils.ts             # 测试工具函数
 ├── logger.ts                 # 日志模块（文件 + 控制台）
 ├── state_manager.ts          # 状态机模块（COMMAND/SESSION 模式）
 ├── core_processor.ts         # 核心处理器（消息路由 + 轮询等待）
@@ -220,8 +239,13 @@ src/
 ├── command_parser.ts         # 指令解析模块
 ├── command_router.ts         # 指令路由模块
 ├── feishu_bot.ts             # 飞书通信模块
-├── stream_consumer.ts        # 流式消费者模块
 ├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
+├── utils/
+│   ├── ensure_log_dir.ts     # 日志目录初始化工具
+│   ├── error.ts              # 错误转换工具函数
+│   └── terminal_cleaner.ts   # 终端序列清理工具
+├── services/
+│   └── timeout_checker.ts    # 会话超时检查服务
 └── adapters/
     ├── adapter.ts            # 适配器接口
     ├── feishu_adapter.ts     # 飞书适配器
@@ -247,9 +271,7 @@ src/
 | `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
-| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | 流式日志文件目录 |
-| `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
-| `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 最小间隔警告阈值 (ms) |
+| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | tmux pipe-pane 日志目录 |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
@@ -305,7 +327,9 @@ npm run local
 1. 创建 `src/new_module.ts`
 2. 定义接口和工厂函数
 3. 导出接口类型供其他模块使用
-4. 在 `types.ts` 添加相关类型定义
+4. 如需新类型，在 `src/types.ts` 添加类型定义
+5. 如需新错误类，在 `src/errors.ts` 添加错误定义
+6. 如需工具函数，在 `src/utils/` 下创建
 
 ### 调试
 

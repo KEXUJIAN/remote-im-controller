@@ -69,9 +69,6 @@ vim .env
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
 - `POLL_FINAL_DELAY` - 进程结束后等待时间 ms（默认 500）
 - `POLL_TIMEOUT_CHECK_COUNT` - 超时后额外检测次数（默认 3）
-- `STREAM_LOG_DIR` - 流式日志文件目录（默认 `./logs/stream/`）
-- `STREAM_PUSH_INTERVAL_MS` - 流式推送间隔 ms（默认 2000）
-- `STREAM_PUSH_MIN_INTERVAL_MS` - 最小间隔警告阈值 ms（默认 500）
 
 ### 4. 启动服务
 
@@ -143,9 +140,6 @@ npm run test:state
 # 测试核心处理器
 npm run test:core
 
-# 测试流式消费者模块
-npm run test:stream
-
 # 测试 Session 输出管理模块
 npm run test:output
 
@@ -168,7 +162,9 @@ remote-im-controller/
 ├── src/
 │   ├── app.ts              # 主入口（飞书模式）
 │   ├── cli.ts              # CLI 入口（本地测试）
+│   ├── config.ts           # 配置加载模块
 │   ├── types.ts            # 类型定义
+│   ├── errors.ts           # 自定义错误类
 │   ├── logger.ts           # 日志模块
 │   ├── state_manager.ts    # 状态机模块
 │   ├── core_processor.ts   # 核心处理器
@@ -176,8 +172,13 @@ remote-im-controller/
 │   ├── command_parser.ts   # 指令解析
 │   ├── command_router.ts   # 指令路由
 │   ├── feishu_bot.ts       # 飞书通信
-│   ├── stream_consumer.ts  # 流式消费者
 │   ├── session_output_manager.ts # Session 输出管理
+│   ├── utils/              # 工具函数
+│   │   ├── ensure_log_dir.ts     # 日志目录初始化
+│   │   ├── error.ts              # 错误转换
+│   │   └── terminal_cleaner.ts   # 终端序列清理
+│   ├── services/           # 服务模块
+│   │   └── timeout_checker.ts    # 超时检查
 │   └── adapters/           # 适配器模块
 ├── dist/                   # 编译输出
 └── logs/                   # 日志目录
