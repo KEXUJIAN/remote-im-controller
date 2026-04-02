@@ -10,7 +10,8 @@ import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
 import { createSessionOutputManager, type SessionOutputManager } from './session_output_manager.js';
 import type { TmuxCaptureResult } from './types.js';
-import { TmuxNotAvailableError } from './types.js';
+import { TmuxNotAvailableError } from './errors.js';
+import { toErrorMessage } from './utils/error.js';
 
 const logger = createLogger('tmux_manager');
 
@@ -40,13 +41,34 @@ export function createTmuxManager(
     getLogPath: (sessionName: string) => activePipes.get(sessionName),
   });
 
+  function buildTmuxArgs(args: string[]): string[] {
+    return [...debugArgs, ...args];
+  }
+
+  function buildSpawnOptions() {
+    return {
+      stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+      cwd: debug ? tmuxTmpDir : undefined,
+      env: { ...process.env },
+    };
+  }
+
+  function createProcessError(err: unknown, args: string[]): Error {
+    const error = new Error(`tmux command failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    error.cause = err;
+    logger.error('exec', `tmux command error: ${args.join(' ')}`, error);
+    return error;
+  }
+
+  function createExitError(code: number | null, stderr: string, args: string[]): Error {
+    const error = new Error(`tmux command exited with code ${code}: ${stderr.trim() || 'no error message'}`);
+    logger.error('exec', `tmux command failed: tmux ${args.join(' ')}`, error, { exitCode: code, stderr: stderr.trim() });
+    return error;
+  }
+
   function execTmux(args: string[]): Promise<string> {
     return new Promise((res, reject) => {
-      const proc = spawn('tmux', [...debugArgs, ...args], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: debug ? tmuxTmpDir : undefined,
-        env: { ...process.env },
-      });
+      const proc = spawn('tmux', buildTmuxArgs(args), buildSpawnOptions());
 
       let stdout = '';
       let stderr = '';
@@ -55,17 +77,12 @@ export function createTmuxManager(
       proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
       proc.on('error', (err) => {
-        const error = new Error(`tmux command failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-        error.cause = err;
-        logger.error('exec', `tmux command error: ${args.join(' ')}`, error);
-        reject(error);
+        reject(createProcessError(err, args));
       });
 
       proc.on('close', (code) => {
         if (code !== 0) {
-          const error = new Error(`tmux command exited with code ${code}: ${stderr.trim() || 'no error message'}`);
-          logger.error('exec', `tmux command failed: tmux ${args.join(' ')}`, error, { exitCode: code, stderr: stderr.trim() });
-          reject(error);
+          reject(createExitError(code, stderr, args));
           return;
         }
         logger.debug('exec', `tmux command succeeded: tmux ${args.join(' ')}`, { stdoutLength: stdout.length });
@@ -99,7 +116,7 @@ export function createTmuxManager(
     const logFilePath = activePipes.get(session);
     
     await execTmux(['pipe-pane', '-t', session]).catch((err) => {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       logger.debug('teardownPipePane', `停止 pipe-pane 时出错（可能已停止）: ${errMsg}`);
     });
     
@@ -107,7 +124,7 @@ export function createTmuxManager(
     
     if (logFilePath) {
       await unlink(logFilePath).catch((err) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = toErrorMessage(err);
         logger.debug('teardownPipePane', `删除日志文件时出错（可能已删除）: ${errMsg}`);
       });
       logger.info('teardownPipePane', `pipe-pane 已停止: ${session}`, { logFilePath });
@@ -161,7 +178,7 @@ export function createTmuxManager(
         logger.debug('listSessions', `找到 ${sessions.length} 个会话`, { sessions });
         return sessions;
       } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = toErrorMessage(err);
         if (errMsg.includes('no sessions') || errMsg.includes('error connecting to') || errMsg.includes('no server running')) {
           logger.debug('listSessions', '没有找到任何会话或服务器未启动');
           return [];
@@ -214,6 +231,8 @@ export function createTmuxManager(
         logger.debug('getPaneCommand', `会话 ${name} 当前命令: ${command}`);
         return command;
       } catch {
+        // getPaneCommand 在会话不存在时会失败
+        // 返回空字符串表示无命令，调用方应处理这种情况
         logger.debug('getPaneCommand', `获取会话命令失败，会话可能不存在: ${name}`);
         return '';
       }

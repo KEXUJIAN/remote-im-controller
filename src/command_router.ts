@@ -5,7 +5,8 @@
 import type { CommandContext, CommandResult, CommandHandler } from './types.js';
 import type { TmuxManager } from './tmux_manager.js';
 import { createLogger } from './logger.js';
-import { SessionNotFoundError } from './types.js';
+import { SessionNotFoundError } from './errors.js';
+import { toError } from './utils/error.js';
 
 const logger = createLogger('command_router');
 
@@ -241,7 +242,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
     try {
       return await handler(ctx);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
+      const error = toError(err);
       logger.error('route', `处理指令失败: ${parsed.action}`, err, { parsed });
 
       // 如果是 SessionNotFoundError，返回友好提示
@@ -272,29 +273,16 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
 // CLI 测试入口
 if (process.argv[2] === 'test') {
   import('./tmux_manager.js')
-    .then(({ createTmuxManager }) => {
+    .then(async ({ createTmuxManager }) => {
+      const { createTestConfig } = await import('./test_utils.js');
       const tmuxManager = createTmuxManager(50, false, './logs/stream/');
       const router = createCommandRouter({ tmuxManager });
 
-      const mockConfig = {
-        feishuAppId: 'test',
-        feishuAppSecret: 'test',
-        adminOpenId: 'test',
-        tmuxDefaultLines: 50,
-        tmuxDebug: false,
-        pollInterval: 1000,
-        pollTimeout: 30000,
-        pollFinalDelay: 500,
-        pollTimeoutCheckCount: 3,
-        reconnectMaxRetries: 5,
-        reconnectDelay: 1000,
-        logLevel: 'debug' as const,
+      const mockConfig = createTestConfig({
+        logLevel: 'debug',
         logDir: './logs',
-        sessionTimeoutMs: 600000,
         streamLogDir: './logs/stream/',
-        streamPushIntervalMs: 2000,
-        streamPushMinIntervalMs: 500,
-      };
+      });
 
       const runTests = async () => {
     console.log('=== CommandRouter 测试 ===\n');

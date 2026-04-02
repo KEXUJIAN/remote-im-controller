@@ -11,7 +11,7 @@ import type {
   CardActionTriggerEvent,
   BotMenuEvent,
 } from './types.js';
-import { ReconnectLimitExceededError } from './types.js';
+import { ReconnectLimitExceededError } from './errors.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('feishu_bot');
@@ -95,6 +95,20 @@ export function createFeishuBot(config: Config): FeishuBot {
   }
 
   /**
+   * 检查操作者是否为管理员
+   * @param operatorOpenId 操作者 Open ID
+   * @param context 上下文描述（用于日志）
+   * @returns 是否为管理员
+   */
+  function checkAdminPermission(operatorOpenId: string | undefined, context: string): boolean {
+    if (operatorOpenId !== config.adminOpenId) {
+      logger.debug('auth', `非管理员${context}，已丢弃`, { operatorOpenId });
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * 尝试重连
    */
   async function attemptReconnect(
@@ -152,11 +166,7 @@ export function createFeishuBot(config: Config): FeishuBot {
 
           // 权限检查
           const senderOpenId = data.sender?.sender_id?.open_id;
-          if (senderOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员消息，已丢弃', {
-              senderOpenId,
-              expectedOpenId: config.adminOpenId,
-            });
+          if (!checkAdminPermission(senderOpenId, '消息')) {
             return;
           }
 
@@ -180,8 +190,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
 
           const operatorOpenId = data.operator?.open_id;
-          if (operatorOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员卡片事件，已丢弃');
+          if (!checkAdminPermission(operatorOpenId, '卡片事件')) {
             return { toast: { type: 'error', content: '无权限' } };
           }
 
@@ -199,8 +208,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
           
           const operatorOpenId = data.operator?.operator_id?.open_id;
-          if (operatorOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员菜单事件，已丢弃');
+          if (!checkAdminPermission(operatorOpenId, '菜单事件')) {
             return;
           }
 
@@ -402,25 +410,17 @@ export function createFeishuBot(config: Config): FeishuBot {
 // ==================== CLI 测试入口 ====================
 
 async function runTest(): Promise<void> {
-  const testConfig: Config = {
+  const { createTestConfig } = await import('./test_utils.js');
+  const testConfig = createTestConfig({
     feishuAppId: process.env.FEISHU_APP_ID || 'test_app_id',
     feishuAppSecret: process.env.FEISHU_APP_SECRET || 'test_app_secret',
     adminOpenId: process.env.ADMIN_OPEN_ID || 'test_admin_open_id',
     tmuxDefaultLines: 100,
     tmuxDebug: process.env.TMUX_DEBUG === 'true',
-    pollInterval: 1000,
-    pollTimeout: 30000,
-    pollFinalDelay: 500,
-    pollTimeoutCheckCount: 3,
-    reconnectMaxRetries: 5,
-    reconnectDelay: 3000,
     logLevel: 'debug',
     logDir: './logs',
-    sessionTimeoutMs: 600000,
     streamLogDir: './logs/stream/',
-    streamPushIntervalMs: 2000,
-    streamPushMinIntervalMs: 500,
-  };
+  });
 
   console.log('=== 飞书机器人测试 ===');
   console.log('配置:', {

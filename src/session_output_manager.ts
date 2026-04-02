@@ -5,8 +5,8 @@
  */
 
 import { statSync, openSync, readSync, closeSync, existsSync } from 'fs';
-import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
+import { cleanTerminalOutput } from './utils/terminal_cleaner.js';
 
 const logger = createLogger('session_output_manager');
 
@@ -61,41 +61,6 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
   
   /** session 状态映射 */
   const sessionStates = new Map<string, SessionState>();
-  
-  /**
-   * 清理终端控制序列（比 strip-ansi 更完整）
-   */
-  function cleanTerminalOutput(str: string): string {
-    let result = str;
-    
-    // 1. 先处理 OSC 序列（必须在 stripAnsi 之前）
-    // OSC 格式：\x1b] <command> ; <param> \x07 或 \x1b\\
-    result = result.replace(/\x1b\][^\x07]*\x07/g, '');
-    result = result.replace(/\x1b\][^\x1b]*\x1b\\/g, '');
-    result = result.replace(/\x1bk[^\x1b]*\x1b\\/g, '');
-    
-    // 2. 处理私有模式序列（必须在 stripAnsi 之前，因为可能有或没有 \x1b 前缀）
-    result = result.replace(/\x1b\[\?[0-9;]*[hl]/g, '');
-    result = result.replace(/\[\?[0-9;]*[hl]/g, '');
-    
-    // 3. 处理其他控制字符（必须在 stripAnsi 之前）
-    result = result.replace(/\x1b[=>]/g, '');  // \x1b= 和 \x1b>
-    result = result.replace(/\x1b\[[0-9;]*[JK]/g, '');  // 清屏序列
-    
-    // 4. 使用 strip-ansi 处理标准 ANSI 序列
-    result = stripAnsi(result);
-    
-    // 5. 处理退格符（删除前一个字符）
-    while (result.includes('\x08')) {
-      result = result.replace(/[^\x08]\x08/g, '');
-    }
-    result = result.replace(/\x08+/g, '');
-    
-    // 6. 处理回车符（移除所有 \r）
-    result = result.replace(/\r/g, '');
-    
-    return result;
-  }
   
   /**
    * 同步获取文件大小

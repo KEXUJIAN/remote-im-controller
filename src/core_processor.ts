@@ -3,6 +3,7 @@
  */
 
 import { createLogger } from './logger.js';
+import { toError } from './utils/error.js';
 import type {
   UnifiedMessage,
   CardEventPayload,
@@ -74,6 +75,8 @@ async function captureWithPoll(
     if (elapsed >= pollTimeout) {
       logger.info('captureWithPoll', `超时，开始额外检测`, { sessionName, timeoutCheckCount });
 
+      // 超时后额外检测几次，避免因进程切换时机导致的误判
+      // 某些长时间运行的命令可能在超时边缘完成
       for (let i = 0; i < timeoutCheckCount; i++) {
         await new Promise((r) => setTimeout(r, pollInterval));
         pollCount++;
@@ -318,7 +321,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
           logger.warn('process', `未知消息类型: ${type}`);
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
+      const error = toError(err);
       logger.error('process', `消息处理失败`, error, { type, userId, chatId });
       await sendMessage(chatId, `❌ 处理失败: ${error.message}`);
     }
@@ -329,6 +332,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
 // 内联测试
 if (process.argv[2] === 'test') {
+  const { createTestConfig } = await import('./test_utils.js');
   console.log('=== CoreProcessor 测试 ===\n');
 
   interface SentMessage { chatId: string; message: string }
@@ -404,25 +408,11 @@ if (process.argv[2] === 'test') {
     },
   };
 
-  const mockConfig: Config = {
-    feishuAppId: 'test',
-    feishuAppSecret: 'test',
-    adminOpenId: 'test',
-    tmuxDefaultLines: 50,
-    tmuxDebug: false,
-    pollInterval: 1000,
-    pollTimeout: 30000,
-    pollFinalDelay: 500,
-    pollTimeoutCheckCount: 3,
-    reconnectMaxRetries: 5,
-    reconnectDelay: 1000,
+  const mockConfig = createTestConfig({
     logLevel: 'debug',
     logDir: './logs',
-    sessionTimeoutMs: 600000,
     streamLogDir: './logs/stream/',
-    streamPushIntervalMs: 2000,
-    streamPushMinIntervalMs: 500,
-  };
+  });
 
   const processor = createCoreProcessor({
     stateManager: mockStateManager,

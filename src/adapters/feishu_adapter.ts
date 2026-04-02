@@ -125,6 +125,7 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
 // ==================== 内联测试 ====================
 
 async function runTest(): Promise<void> {
+  const { createTestConfig } = await import('../test_utils.js');
   console.log('=== 飞书适配器测试 ===');
 
   const mockBot: FeishuBot = {
@@ -146,25 +147,13 @@ async function runTest(): Promise<void> {
     },
   };
 
-  const testConfig: Config = {
-    feishuAppId: 'test',
-    feishuAppSecret: 'test',
+  const testConfig = createTestConfig({
     adminOpenId: 'test_admin',
     tmuxDefaultLines: 100,
-    tmuxDebug: false,
-    pollInterval: 1000,
-    pollTimeout: 30000,
-    pollFinalDelay: 500,
-    pollTimeoutCheckCount: 3,
-    reconnectMaxRetries: 5,
-    reconnectDelay: 3000,
     logLevel: 'debug',
     logDir: './logs',
-    sessionTimeoutMs: 600000,
     streamLogDir: './logs/stream/',
-    streamPushIntervalMs: 2000,
-    streamPushMinIntervalMs: 500,
-  };
+  });
 
   const adapter = createFeishuAdapter(testConfig, mockBot);
 
