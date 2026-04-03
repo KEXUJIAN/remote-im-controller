@@ -17,6 +17,7 @@ import type { CommandRouter } from './command_router.js';
 import type { TmuxManager } from './tmux_manager.js';
 import type { CoreProcessor } from './adapters/adapter.js';
 import { parseCommand } from './command_parser.js';
+import { createMarkerDetector } from './marker_detector.js';
 
 const logger = createLogger('core_processor');
 
@@ -41,8 +42,11 @@ interface PollResult {
  * 轮询抓取屏幕直到命令完成
  * - 检测进程状态变化判断命令是否完成
  * - 超时后额外检测几次，避免刚结束时抓到不完整输出
+ * 
+ * @deprecated 将在 Task 12 中删除，改用流式推送机制
+ * @internal 仅用于兼容性，Task 12 后删除
  */
-async function captureWithPoll(
+export async function captureWithPoll(
   tmuxManager: TmuxManager,
   sessionName: string,
   lines: number,
@@ -174,6 +178,12 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         lastSessionMap.set(userId, result.lastSession);
       }
 
+      // 如果是 exec 动作且成功，自动进入 SESSION 模式
+      if (result.success && parsed.action === 'exec' && result.lastSession) {
+        stateManager.transition(userId, { mode: 'SESSION', activeSession: result.lastSession });
+        logger.info('handleTextMessage', 'exec 后自动进入 SESSION 模式', { userId, session: result.lastSession });
+      }
+
       // 优先发送模板卡片
       if (result.cardVariables && config.cardTemplateId && sendTemplateCard) {
         await sendTemplateCard(chatId, config.cardTemplateId, result.cardVariables);
@@ -194,7 +204,17 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
     if (state.activeSession) {
       const sessionName = state.activeSession;
 
-      // 检查会话是否存在
+      if (stateManager.isBusy(userId)) {
+        await sendMessage(chatId, '⏳ 请等待当前命令完成...');
+        return;
+      }
+
+      if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
+        stateManager.resetState(userId);
+        await sendMessage(chatId, `⏰ 会话已超过 ${Math.round(config.sessionTimeoutMs / 60000)} 分钟未活动，已退出会话模式`);
+        return;
+      }
+
       const exists = await tmuxManager.sessionExists(sessionName);
       if (!exists) {
         stateManager.resetState(userId);
@@ -202,37 +222,47 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         return;
       }
 
-      // 记录原始命令
-      const originalCmd = await tmuxManager.getPaneCommand(sessionName);
+      stateManager.setBusy(userId, text);
 
-      // 获取 outputManager 并重置 offset
-      const outputManager = tmuxManager.getOutputManager();
-      const offset = outputManager.resetOffset(sessionName);
+      try {
+        const outputManager = tmuxManager.getOutputManager();
+        const markerDetector = createMarkerDetector();
 
-      // 发送命令到 tmux
-      logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
-      await tmuxManager.sendCommand(sessionName, text);
+        outputManager.resetOffset(sessionName);
 
-      // 轮询等待屏幕稳定
-      const result = await captureWithPoll(
-        tmuxManager,
-        sessionName,
-        config.tmuxDefaultLines,
-        config.pollInterval,
-        config.pollTimeout,
-        originalCmd,
-        config.pollFinalDelay,
-        config.pollTimeoutCheckCount
-      );
+        logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
+        await tmuxManager.sendCommand(sessionName, text);
 
-      // 从 pipe-pane 日志读取新增输出
-      let output = outputManager.readNewOutput(sessionName, offset);
-      if (result.timeout && result.stillRunning) {
-        output = `⏱️ 等待超时 (${Math.round(result.elapsed / 1000)}s)\n⚠️ 命令可能仍在运行中\n💡 可调大 POLL_TIMEOUT 环境变量\n\n${output}`;
+        let finalOutput = '';
+        const streamComplete = new Promise<void>((resolve) => {
+          outputManager.startStreaming(sessionName, {
+            intervalMs: config.streamPushIntervalMs,
+            onChunk: async (chunk) => {
+              finalOutput += chunk;
+              logger.debug('handleTextMessage', '流式推送 chunk', { chunkLength: chunk.length });
+            },
+            onComplete: () => {
+              stateManager.clearBusy(userId);
+              logger.info('handleTextMessage', '流式推送完成', { sessionName });
+              resolve();
+            },
+            markerDetector,
+          });
+        });
+
+        await streamComplete;
+
+        if (finalOutput) {
+          await sendMessage(chatId, `\`\`\`\n${finalOutput}\n\`\`\``);
+        } else {
+          await sendMessage(chatId, '✅ 命令执行完成（无输出）');
+        }
+
+        stateManager.renewActivity(userId);
+      } catch (err) {
+        stateManager.clearBusy(userId);
+        throw err;
       }
-
-      await sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``);
-      stateManager.renewActivity(userId);
     }
   }
 
@@ -421,7 +451,12 @@ if (process.argv[2] === 'test') {
         readNewOutput: () => 'test output',
         clearOffset: () => {},
         hasOffset: () => false,
-        startStreaming: () => {},
+        startStreaming: async (_sessionName: string, options: { onChunk: (chunk: string) => Promise<void>; onComplete?: () => void }) => {
+          await options.onChunk('test output');
+          setTimeout(() => {
+            options.onComplete?.();
+          }, 10);
+        },
         stopStreaming: () => {},
         isStreaming: () => false,
       };
@@ -589,7 +624,7 @@ if (process.argv[2] === 'test') {
       timestamp: Date.now(),
     });
     const msg7 = getLastMessage();
-    if (msg7 && msg7.message.includes('已超过 30 分钟')) {
+    if (msg7 && msg7.message.includes('已退出会话模式') && msg7.message.includes('未活动')) {
       console.log('   ✓ 超时检查正确\n');
     } else {
       console.log('   ✗ 超时检查失败\n');
