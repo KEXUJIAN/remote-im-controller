@@ -272,24 +272,30 @@ src/
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
 | `STREAM_LOG_DIR` | 否 | `./logs/stream/` | tmux pipe-pane 日志目录 |
+| `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
-## SESSION 模式轮询机制
+## SESSION 模式流式推送机制
 
-SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
+SESSION 模式下命令发送后，使用流式推送机制获取输出：
 
-1. **发送前**：记录当前 pane 的前台命令（如 zsh）
-2. **轮询检测**：每 `POLL_INTERVAL` ms 检测 `pane_current_command`
-3. **完成判定**：当前进程回到原始 shell 时认为命令完成
-4. **最终延迟**：等待 `POLL_FINAL_DELAY` ms 后抓取输出
-5. **超时保护**：最长等待 `POLL_TIMEOUT` ms
-6. **超时额外检测**：超时后额外检测 `POLL_TIMEOUT_CHECK_COUNT` 次
+1. **PS1 边界标记**：会话创建时注入 OSC 标记 `\x1b]99;CMD_END\x07`
+2. **流式推送**：定时读取 pipe-pane 日志增量输出
+3. **完成检测**：检测到 PS1 标记时认为命令完成
+4. **忙碌状态**：命令执行期间锁定，拒绝新命令
 
-适用于：
-- LLM 流式响应（如 `opencode run "你好"`）
-- 长时间运行的命令
-- 实时日志输出
+### 流式推送配置
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `STREAM_PUSH_INTERVAL_MS` | 2000 | 流式推送间隔 (ms) |
+
+### 忙碌状态
+
+当用户正在执行命令时，会话处于忙碌状态：
+- 新命令会被拒绝，返回 "⏳ 请等待当前命令完成..."
+- 忙碌状态通过 `StateManager.isBusy()` 检查
 
 ## 本地 CLI 测试
 

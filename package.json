@@ -14,7 +14,9 @@
     "test:core": "tsx src/core_processor.ts test",
     "test:output": "tsx src/session_output_manager.ts test",
     "local": "node dist/cli.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "install-bot": "node scripts/install-bot.cjs",
+    "uninstall-bot": "node scripts/uninstall-bot.cjs"
   },
   "keywords": [
     "feishu",

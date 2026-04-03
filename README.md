@@ -6,9 +6,10 @@
 
 - 📱 通过飞书接收远程指令
 - 💻 控制 tmux 会话执行命令
-- 📺 抓取终端输出推送回飞书
+- 📺 流式推送终端输出回飞书
 - 🔒 基于用户 ID 的鉴权机制
 - 🔄 自动断线重连
+- 🔐 忙碌状态锁定（防止并发命令冲突）
 - 📝 详细日志记录
 - 🎯 TypeScript 类型安全
 
@@ -65,6 +66,7 @@ vim .env
 - `LOG_LEVEL` - 日志级别（默认 `info`）
 - `TMUX_DEBUG` - 开启 tmux 详细日志（默认 `false`，设为 `true` 时日志写入 `LOG_DIR`）
 - `SESSION_TIMEOUT_MS` - 会话超时时间 ms（默认 600000，即 10 分钟）
+- `STREAM_PUSH_INTERVAL_MS` - 流式推送间隔 ms（默认 2000）
 - `POLL_INTERVAL` - 轮询间隔 ms（默认 3000）
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
 - `POLL_FINAL_DELAY` - 进程结束后等待时间 ms（默认 500）
@@ -105,23 +107,20 @@ pm2 start ecosystem.config.cjs
 | `/cmd kill <name>` | 终止会话 | `/cmd kill opencode` |
 | `/cmd <session> <command>` | 执行命令 | `/cmd opencode ls -la` |
 
-## SESSION 模式轮询机制
+## SESSION 模式流式推送机制
 
-SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
+SESSION 模式下命令发送后，使用流式推送机制获取输出：
 
-1. **发送前**：记录当前 pane 的前台命令（如 zsh）
-2. **轮询中**：检测 `pane_current_command` 是否回到原始值
-3. **命令完成**：进程回到原始 shell 后，等待 `POLL_FINAL_DELAY` ms 再抓取输出
-4. **超时保护**：最长等待 `POLL_TIMEOUT` ms
+1. **PS1 边界标记**：会话创建时注入 OSC 标记 `\x1b]99;CMD_END\x07`
+2. **流式推送**：定时读取 pipe-pane 日志增量输出
+3. **完成检测**：检测到 PS1 标记时认为命令完成
+4. **忙碌状态**：命令执行期间锁定，拒绝新命令
 
-### 长命令处理
+### 忙碌状态
 
-如果命令运行时间可能超过 `POLL_TIMEOUT`（默认 60 秒），可以在 `.env` 中调大：
-```bash
-POLL_TIMEOUT=300000  # 5 分钟
-```
-
-超时后会返回当前输出并提示"命令可能仍在运行中，可调大 POLL_TIMEOUT 环境变量"。
+当用户正在执行命令时，会话处于忙碌状态：
+- 新命令会被拒绝，返回 "⏳ 请等待当前命令完成..."
+- 忙碌状态通过 `StateManager.isBusy()` 检查
 
 ## 模块测试
 
@@ -207,6 +206,24 @@ remote-im-controller/
 ### 连接断开
 
 应用会自动重连，最多重试 5 次。如果持续失败，检查网络连接。
+
+## WSL 调度脚本
+
+项目提供 `omo-bot.ts` 脚本用于 WSL 环境管理：
+
+```bash
+# 安装到用户 bin 目录
+npm run install-bot
+
+# 使用
+omo-bot start   # 启动服务
+omo-bot stop    # 停止服务
+omo-bot plan    # 执行 opencode plan
+omo-bot exec "command"  # 执行命令
+
+# 卸载
+npm run uninstall-bot
+```
 
 ## License
 

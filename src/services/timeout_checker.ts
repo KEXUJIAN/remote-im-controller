@@ -49,6 +49,11 @@ export function createTimeoutChecker(
           if (state.mode !== 'SESSION') {
             continue;
           }
+          // 忙碌状态时跳过超时检查
+          if (stateManager.isBusy(userId)) {
+            logger.debug('checkSessionTimeout', '忙碌状态，跳过超时检查', { userId });
+            continue;
+          }
           if (stateManager.checkTimeout(userId, sessionTimeoutMs)) {
             const sessionName = state.activeSession;
             stateManager.resetState(userId);
