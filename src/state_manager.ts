@@ -29,6 +29,12 @@ export interface StateManager {
   resetState(chatId: string): void;
   /** 获取所有状态的 chatId 迭代器 */
   getAllStates(): IterableIterator<string>;
+  /** 设置忙碌状态 */
+  setBusy(chatId: string, command: string): void;
+  /** 清除忙碌状态 */
+  clearBusy(chatId: string): void;
+  /** 检查是否忙碌 */
+  isBusy(chatId: string): boolean;
 }
 
 /**
@@ -99,6 +105,36 @@ export function createStateManager(): StateManager {
 
     getAllStates(): IterableIterator<string> {
       return states.keys();
+    },
+
+    setBusy(chatId: string, command: string): void {
+      const state = this.getState(chatId);
+      const updated: ChatState = {
+        ...state,
+        isBusy: true,
+        busyCommand: command,
+        busySince: Date.now(),
+      };
+      states.set(chatId, updated);
+      logger.info('setBusy', `设置忙碌状态: ${chatId}`, { command });
+    },
+
+    clearBusy(chatId: string): void {
+      const state = states.get(chatId);
+      if (state) {
+        const updated: ChatState = {
+          ...state,
+          isBusy: false,
+        };
+        delete updated.busyCommand;
+        delete updated.busySince;
+        states.set(chatId, updated);
+        logger.info('clearBusy', `清除忙碌状态: ${chatId}`);
+      }
+    },
+
+    isBusy(chatId: string): boolean {
+      return this.getState(chatId).isBusy;
     },
   };
 }
@@ -227,6 +263,78 @@ if (process.argv[2] === 'test') {
       console.log('9. 测试 renewActivity 对不存在的 chatId...');
       manager.renewActivity('nonexistent-chat');
       console.log('   ✓ 无报错\n');
+
+      // 10. 测试 setBusy 方法
+      console.log('10. 测试 setBusy 方法...');
+      const busyChatId = 'busy-chat-001';
+      manager.setBusy(busyChatId, 'npm run build');
+      const busyState = manager.getState(busyChatId);
+      console.log(`   isBusy: ${busyState.isBusy}`);
+      console.log(`   busyCommand: ${busyState.busyCommand}`);
+      console.log(`   busySince: ${busyState.busySince}`);
+      if (
+        busyState.isBusy === true &&
+        busyState.busyCommand === 'npm run build' &&
+        busyState.busySince !== undefined &&
+        busyState.mode === 'COMMAND' &&
+        busyState.activeSession === null
+      ) {
+        console.log('   ✓ setBusy 正确设置忙碌状态\n');
+      } else {
+        console.log('   ✗ setBusy 失败\n');
+        process.exit(1);
+      }
+
+      // 11. 测试 isBusy 方法
+      console.log('11. 测试 isBusy 方法...');
+      const isBusyResult = manager.isBusy(busyChatId);
+      const isNotBusy = manager.isBusy('non-busy-chat');
+      console.log(`   busyChatId isBusy: ${isBusyResult}`);
+      console.log(`   non-busy-chat isBusy: ${isNotBusy}`);
+      if (isBusyResult === true && isNotBusy === false) {
+        console.log('   ✓ isBusy 返回正确\n');
+      } else {
+        console.log('   ✗ isBusy 返回错误\n');
+        process.exit(1);
+      }
+
+      // 12. 测试 clearBusy 方法
+      console.log('12. 测试 clearBusy 方法...');
+      manager.clearBusy(busyChatId);
+      const clearedState = manager.getState(busyChatId);
+      console.log(`   isBusy: ${clearedState.isBusy}`);
+      console.log(`   busyCommand: ${clearedState.busyCommand}`);
+      console.log(`   busySince: ${clearedState.busySince}`);
+      if (
+        clearedState.isBusy === false &&
+        clearedState.busyCommand === undefined &&
+        clearedState.busySince === undefined
+      ) {
+        console.log('   ✓ clearBusy 正确清除忙碌状态\n');
+      } else {
+        console.log('   ✗ clearBusy 失败\n');
+        process.exit(1);
+      }
+
+      // 13. 测试 clearBusy 对不存在的 chatId 无报错
+      console.log('13. 测试 clearBusy 对不存在的 chatId...');
+      manager.clearBusy('nonexistent-busy-chat');
+      console.log('   ✓ 无报错\n');
+
+      // 14. 测试忙碌状态不影响模式切换
+      console.log('14. 测试忙碌状态不影响模式切换...');
+      const modeChatId = 'mode-test-chat';
+      manager.setBusy(modeChatId, 'long command');
+      manager.transition(modeChatId, { mode: 'SESSION', activeSession: 'test-session' });
+      const modeState = manager.getState(modeChatId);
+      console.log(`   mode: ${modeState.mode}`);
+      console.log(`   isBusy: ${modeState.isBusy}`);
+      if (modeState.mode === 'SESSION' && modeState.isBusy === true) {
+        console.log('   ✓ 忙碌状态与模式切换互不影响\n');
+      } else {
+        console.log('   ✗ 状态干扰\n');
+        process.exit(1);
+      }
 
       console.log('=== 所有测试完成 ===');
     });

@@ -149,6 +149,15 @@ export function createTmuxManager(
       try {
         await execTmux(['new-session', '-d', '-s', name]);
         await setupPipePane(name);
+        
+        // 注入 PS1 边界标记
+        const shell = process.env.SHELL || '/bin/zsh';
+        const ps1Marker = shell.includes('bash')
+          ? 'PS1=\'\\n\\x1b]99;CMD_END\\x07\\n$ \''
+          : 'PS1=\'%{%f%b%k%}\\n\\x1b]99;CMD_END\\x07\\n%# \'';
+        await execTmux(['send-keys', '-t', name, `export ${ps1Marker}`, 'C-m']);
+        logger.debug('createSession', `注入 PS1 标记`, { shell, ps1Marker });
+        
         outputManager.initOffset(name);
         logger.info('createSession', `会话创建成功: ${name}`);
       } catch (err) {

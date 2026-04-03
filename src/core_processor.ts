@@ -371,6 +371,22 @@ if (process.argv[2] === 'test') {
     getAllStates() {
       return mockStateMap.keys();
     },
+    setBusy(userId: string, command: string) {
+      const state = this.getState(userId);
+      mockStateMap.set(userId, { ...state, isBusy: true, busyCommand: command, busySince: Date.now() });
+    },
+    clearBusy(userId: string) {
+      const state = mockStateMap.get(userId);
+      if (state) {
+        const updated = { ...state, isBusy: false };
+        delete updated.busyCommand;
+        delete updated.busySince;
+        mockStateMap.set(userId, updated);
+      }
+    },
+    isBusy(userId: string) {
+      return this.getState(userId).isBusy;
+    },
   };
 
   const sentMessages: SentMessage[] = [];

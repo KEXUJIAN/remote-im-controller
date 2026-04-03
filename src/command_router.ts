@@ -22,10 +22,10 @@ export interface CommandRouterDeps {
 const HELP_TEXT = `指令说明:
 help - 显示帮助
 list - 列出所有会话
-create <name> - 创建会话
+create <name> - 创建会话（返回可点击卡片）
 kill <name> - 终止会话
 status [name] - 查看会话状态
-<session> <command> - 在会话中执行命令
+<session> <command> - 在会话中执行命令（自动进入会话模式）
 
 示例:
   create opencode
@@ -128,6 +128,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
       success: true,
       message: `会话 "${session}" 创建成功`,
       lastSession: session,
+      cardVariables: { session_list: [{ name: session }] },
     };
   }
 
