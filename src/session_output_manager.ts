@@ -7,11 +7,24 @@
 import { statSync, openSync, readSync, closeSync, existsSync } from 'fs';
 import { createLogger } from './logger.js';
 import { cleanTerminalOutput } from './utils/terminal_cleaner.js';
+import type { MarkerDetector } from './types.js';
 
 const logger = createLogger('session_output_manager');
 
 /** 默认最大输出大小 (100KB) */
 const DEFAULT_MAX_OUTPUT_SIZE = 100 * 1024;
+
+/** 流式推送选项 */
+export interface StreamingOptions {
+  /** 轮询间隔 (ms) */
+  intervalMs: number;
+  /** 每次读取到新内容时的回调 */
+  onChunk: (chunk: string) => Promise<void>;
+  /** 完成时的回调 */
+  onComplete?: () => void;
+  /** 标记检测器（可选，用于检测命令完成） */
+  markerDetector?: MarkerDetector;
+}
 
 /**
  * Session 输出管理器接口
@@ -31,6 +44,15 @@ export interface SessionOutputManager {
   
   /** 检查 session 是否已初始化 offset */
   hasOffset(sessionName: string): boolean;
+  
+  /** 开始流式推送 */
+  startStreaming(sessionName: string, options: StreamingOptions): void;
+  
+  /** 停止流式推送 */
+  stopStreaming(sessionName: string): void;
+  
+  /** 检查是否正在流式推送 */
+  isStreaming(sessionName: string): boolean;
 }
 
 /**
@@ -61,6 +83,12 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
   
   /** session 状态映射 */
   const sessionStates = new Map<string, SessionState>();
+  
+  /** 流式推送定时器映射 */
+  const streamingTimers = new Map<string, NodeJS.Timeout>();
+  
+  /** 流式推送 offset 映射 */
+  const streamingOffsets = new Map<string, number>();
   
   /**
    * 同步获取文件大小
@@ -267,12 +295,109 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     return sessionStates.has(sessionName);
   }
   
+  /**
+   * 开始流式推送
+   */
+  function startStreaming(sessionName: string, options: StreamingOptions): void {
+    const { intervalMs, onChunk, onComplete, markerDetector } = options;
+    
+    // 如果已经在流式推送，先停止
+    if (streamingTimers.has(sessionName)) {
+      stopStreaming(sessionName);
+    }
+    
+    // 初始化流式 offset
+    const logPath = getLogPath(sessionName);
+    const initialOffset = logPath && existsSync(logPath) ? getFileSize(logPath) : 0;
+    streamingOffsets.set(sessionName, initialOffset);
+    
+    logger.info('startStreaming', '开始流式推送', { 
+      sessionName, 
+      intervalMs, 
+      initialOffset 
+    });
+    
+    const timer = setInterval(async () => {
+      try {
+        const currentOffset = streamingOffsets.get(sessionName);
+        if (currentOffset === undefined) {
+          logger.warn('startStreaming', '流式 offset 不存在', { sessionName });
+          stopStreaming(sessionName);
+          return;
+        }
+        
+        const newContent = readNewOutput(sessionName, currentOffset);
+        
+        // 更新 offset
+        const state = sessionStates.get(sessionName);
+        if (state) {
+          streamingOffsets.set(sessionName, state.offset);
+        }
+        
+        if (newContent) {
+          // 检查标记
+          if (markerDetector) {
+            const { found, position } = markerDetector.check(newContent);
+            if (found) {
+              logger.info('startStreaming', '检测到完成标记', { sessionName, position });
+              
+              // 推送标记之前的内容
+              const contentBeforeMarker = newContent.slice(0, position);
+              if (contentBeforeMarker) {
+                await onChunk(contentBeforeMarker);
+              }
+              
+              // 停止流式推送
+              stopStreaming(sessionName);
+              onComplete?.();
+              return;
+            }
+          }
+          
+          // 推送新内容
+          await onChunk(newContent);
+        }
+      } catch (err) {
+        logger.error('startStreaming', '流式推送出错', err, { sessionName });
+      }
+    }, intervalMs);
+    
+    streamingTimers.set(sessionName, timer);
+  }
+  
+  /**
+   * 停止流式推送
+   */
+  function stopStreaming(sessionName: string): void {
+    const timer = streamingTimers.get(sessionName);
+    
+    if (timer) {
+      clearInterval(timer);
+      streamingTimers.delete(sessionName);
+      streamingOffsets.delete(sessionName);
+      
+      logger.info('stopStreaming', '流式推送已停止', { sessionName });
+    } else {
+      logger.debug('stopStreaming', '未找到流式推送', { sessionName });
+    }
+  }
+  
+  /**
+   * 检查是否正在流式推送
+   */
+  function isStreaming(sessionName: string): boolean {
+    return streamingTimers.has(sessionName);
+  }
+  
   return {
     initOffset,
     resetOffset,
     readNewOutput,
     clearOffset,
     hasOffset,
+    startStreaming,
+    stopStreaming,
+    isStreaming,
   };
 }
 
@@ -591,16 +716,205 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     }
   }
   
+  /**
+   * 测试 9：流式推送 - 基本启动和停止
+   */
+  function testStreamingBasic(): Promise<boolean> {
+    return new Promise((resolve) => {
+      console.log('\n测试 9：流式推送 - 基本启动和停止');
+      
+      // 清理并重新创建文件
+      rmSync(testDir, { recursive: true });
+      mkdirSync(testDir, { recursive: true });
+      
+      const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+      
+      writeFileSync(testLogFile, '', 'utf8');
+      
+      // 验证初始状态
+      if (manager.isStreaming('test-session')) {
+        console.log('  ✗ 失败：初始状态不应在流式推送');
+        resolve(false);
+        return;
+      }
+      
+      // 启动流式推送
+      const chunks: string[] = [];
+      manager.startStreaming('test-session', {
+        intervalMs: 100,
+        onChunk: async (chunk) => {
+          chunks.push(chunk);
+        },
+      });
+      
+      // 验证流式推送状态
+      if (!manager.isStreaming('test-session')) {
+        console.log('  ✗ 失败：启动后应该在流式推送');
+        resolve(false);
+        return;
+      }
+      
+      // 写入内容
+      writeFileSync(testLogFile, '第一行\n', { encoding: 'utf8', flag: 'a' });
+      
+      // 等待一段时间让定时器触发
+      setTimeout(() => {
+        // 停止流式推送
+        manager.stopStreaming('test-session');
+        
+        // 验证已停止
+        if (manager.isStreaming('test-session')) {
+          console.log('  ✗ 失败：停止后不应在流式推送');
+          resolve(false);
+          return;
+        }
+        
+        console.log(`  收到的 chunks: ${chunks.length}`);
+        console.log('  ✓ 通过：流式推送启动和停止正常');
+        resolve(true);
+      }, 200);
+    });
+  }
+  
+  /**
+   * 测试 10：流式推送 - onChunk 回调触发
+   */
+  function testStreamingOnChunk(): Promise<boolean> {
+    return new Promise((resolve) => {
+      console.log('\n测试 10：流式推送 - onChunk 回调触发');
+      
+      // 清理并重新创建文件
+      rmSync(testDir, { recursive: true });
+      mkdirSync(testDir, { recursive: true });
+      
+      const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+      
+      writeFileSync(testLogFile, '', 'utf8');
+      
+      const chunks: string[] = [];
+      manager.startStreaming('test-session', {
+        intervalMs: 50,
+        onChunk: async (chunk) => {
+          chunks.push(chunk);
+        },
+      });
+      
+      // 写入内容
+      writeFileSync(testLogFile, '内容A\n', { encoding: 'utf8', flag: 'a' });
+      
+      // 等待第一次触发
+      setTimeout(() => {
+        // 写入更多内容
+        writeFileSync(testLogFile, '内容B\n', { encoding: 'utf8', flag: 'a' });
+        
+        // 等待第二次触发
+        setTimeout(() => {
+          manager.stopStreaming('test-session');
+          
+          console.log(`  收到的 chunks: ${JSON.stringify(chunks)}`);
+          
+          // 验证是否收到了内容
+          const allContent = chunks.join('');
+          if (allContent.includes('内容A') && allContent.includes('内容B')) {
+            console.log('  ✓ 通过：onChunk 回调正确触发');
+            resolve(true);
+          } else {
+            console.log('  ✗ 失败：未收到所有内容');
+            resolve(false);
+          }
+        }, 100);
+      }, 100);
+    });
+  }
+  
+  /**
+   * 测试 11：流式推送 - 标记检测触发完成
+   */
+  function testStreamingMarkerDetection(): Promise<boolean> {
+    return new Promise((resolve) => {
+      console.log('\n测试 11：流式推送 - 标记检测触发完成');
+      
+      // 清理并重新创建文件
+      rmSync(testDir, { recursive: true });
+      mkdirSync(testDir, { recursive: true });
+      
+      const manager = createSessionOutputManager({ getLogPath: getTestLogPath });
+      
+      writeFileSync(testLogFile, '', 'utf8');
+      
+      // 创建标记检测器
+      const markerDetector: MarkerDetector = {
+        check: (content: string) => {
+          const marker = '<<COMPLETE>>';
+          const position = content.indexOf(marker);
+          return { found: position !== -1, position };
+        },
+        reset: () => {},
+      };
+      
+      let onCompleteCalled = false;
+      const chunks: string[] = [];
+      
+      manager.startStreaming('test-session', {
+        intervalMs: 50,
+        onChunk: async (chunk) => {
+          chunks.push(chunk);
+        },
+        onComplete: () => {
+          onCompleteCalled = true;
+        },
+        markerDetector,
+      });
+      
+      // 写入不含标记的内容
+      writeFileSync(testLogFile, '正常内容\n', { encoding: 'utf8', flag: 'a' });
+      
+      // 等待第一次触发
+      setTimeout(() => {
+        // 写入包含标记的内容
+        writeFileSync(testLogFile, '完成前内容<<COMPLETE>>忽略内容\n', { encoding: 'utf8', flag: 'a' });
+        
+        // 等待检测
+        setTimeout(() => {
+          console.log(`  onComplete 被调用: ${onCompleteCalled}`);
+          console.log(`  收到的 chunks: ${JSON.stringify(chunks)}`);
+          console.log(`  流式推送状态: ${manager.isStreaming('test-session')}`);
+          
+          // 验证：应该检测到标记并停止
+          if (onCompleteCalled && !manager.isStreaming('test-session')) {
+            const allContent = chunks.join('');
+            if (allContent.includes('正常内容') && allContent.includes('完成前内容')) {
+              console.log('  ✓ 通过：标记检测正确触发完成');
+              resolve(true);
+            } else {
+              console.log('  ✗ 失败：未正确推送标记前的内容');
+              resolve(false);
+            }
+          } else {
+            console.log('  ✗ 失败：标记检测未正确工作');
+            resolve(false);
+          }
+        }, 150);
+      }, 100);
+    });
+  }
+  
   // 运行所有测试
   try {
-    if (testBasicReadWrite()) testPassed++; else testFailed++;
-    if (testFileRotation()) testPassed++; else testFailed++;
-    if (testAnsiStrip()) testPassed++; else testFailed++;
-    if (testLineBuffer()) testPassed++; else testFailed++;
-    if (testClearOffset()) testPassed++; else testFailed++;
-    if (testOscSequenceCleanup()) testPassed++; else testFailed++;
-    if (testBackspaceHandling()) testPassed++; else testFailed++;
-    if (testPrivateModeSequenceCleanup()) testPassed++; else testFailed++;
+    // 同步测试
+    if (await testBasicReadWrite()) testPassed++; else testFailed++;
+    if (await testFileRotation()) testPassed++; else testFailed++;
+    if (await testAnsiStrip()) testPassed++; else testFailed++;
+    if (await testLineBuffer()) testPassed++; else testFailed++;
+    if (await testClearOffset()) testPassed++; else testFailed++;
+    if (await testOscSequenceCleanup()) testPassed++; else testFailed++;
+    if (await testBackspaceHandling()) testPassed++; else testFailed++;
+    if (await testPrivateModeSequenceCleanup()) testPassed++; else testFailed++;
+    
+    // 异步测试
+    if (await testStreamingBasic()) testPassed++; else testFailed++;
+    if (await testStreamingOnChunk()) testPassed++; else testFailed++;
+    if (await testStreamingMarkerDetection()) testPassed++; else testFailed++;
     
     console.log(`\n=== 测试结果 ===`);
     console.log(`通过: ${testPassed}`);

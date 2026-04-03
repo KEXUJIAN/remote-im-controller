@@ -12,6 +12,7 @@ const DEFAULT_STATE: ChatState = {
   mode: 'COMMAND',
   activeSession: null,
   lastActivityTime: Date.now(),
+  isBusy: false,
 };
 
 /** 状态管理器接口 */

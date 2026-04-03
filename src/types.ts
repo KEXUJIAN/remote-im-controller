@@ -176,6 +176,12 @@ export interface ChatState {
   activeSession: string | null;
   /** 最后活动时间戳 */
   lastActivityTime: number;
+  /** 是否忙碌 */
+  isBusy: boolean;
+  /** 当前执行的命令 */
+  busyCommand?: string;
+  /** 忙碌开始时间戳 */
+  busySince?: number;
 }
 
 // ============ 统一消息接口 ============
@@ -243,3 +249,25 @@ export interface CardActionTriggerEvent {
 export type BotMenuEvent = Parameters<
   NonNullable<EventHandles['application.bot.menu_v6']>
 >[0];
+
+// ============ 流式推送相关 ============
+
+/** 流消费者接口 */
+export interface StreamConsumer {
+  /** 启动消费 */
+  start(): void;
+  /** 停止消费 */
+  stop(): void;
+  /** 重置状态 */
+  reset(): void;
+  /** 销毁资源 */
+  destroy(): Promise<void>;
+}
+
+/** 标记检测器接口 */
+export interface MarkerDetector {
+  /** 检测内容中的标记 */
+  check(content: string): { found: boolean; position: number };
+  /** 重置检测器状态 */
+  reset(): void;
+}

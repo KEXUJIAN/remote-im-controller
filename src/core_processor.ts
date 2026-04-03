@@ -10,6 +10,7 @@ import type {
   MenuEventPayload,
   Config,
   CommandContext,
+  ChatState,
 } from './types.js';
 import type { StateManager } from './state_manager.js';
 import type { CommandRouter } from './command_router.js';
@@ -339,18 +340,18 @@ if (process.argv[2] === 'test') {
   interface SentUserMessage { userId: string; message: string }
 
   // 创建模拟依赖
-  const mockStateMap = new Map<string, { mode: 'COMMAND' | 'SESSION'; activeSession: string | null; lastActivityTime: number }>();
+  const mockStateMap = new Map<string, ChatState>();
 
   const mockStateManager: StateManager = {
     getState(userId: string) {
       let state = mockStateMap.get(userId);
       if (!state) {
-        state = { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() };
+        state = { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now(), isBusy: false };
         mockStateMap.set(userId, state);
       }
       return state;
     },
-    transition(userId: string, newState: Partial<{ mode: 'COMMAND' | 'SESSION'; activeSession: string | null }>) {
+    transition(userId: string, newState: Partial<ChatState>) {
       const current = this.getState(userId);
       const updated = { ...current, ...newState, lastActivityTime: Date.now() };
       mockStateMap.set(userId, updated);
@@ -365,7 +366,7 @@ if (process.argv[2] === 'test') {
       return false;
     },
     resetState(userId: string) {
-      mockStateMap.set(userId, { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now() });
+      mockStateMap.set(userId, { mode: 'COMMAND', activeSession: null, lastActivityTime: Date.now(), isBusy: false });
     },
     getAllStates() {
       return mockStateMap.keys();
@@ -404,6 +405,9 @@ if (process.argv[2] === 'test') {
         readNewOutput: () => 'test output',
         clearOffset: () => {},
         hasOffset: () => false,
+        startStreaming: () => {},
+        stopStreaming: () => {},
+        isStreaming: () => false,
       };
     },
   };
@@ -556,6 +560,7 @@ if (process.argv[2] === 'test') {
       mode: 'SESSION',
       activeSession: 'test-session',
       lastActivityTime: Date.now() - (31 * 60 * 1000), // 31 分钟前
+      isBusy: false,
     });
     // 重写 checkTimeout 返回 true
     mockStateManager.checkTimeout = () => true;
@@ -582,6 +587,7 @@ if (process.argv[2] === 'test') {
       mode: 'SESSION',
       activeSession: 'nonexistent-session',
       lastActivityTime: Date.now(),
+      isBusy: false,
     });
     sentMessages.length = 0;
     await processor.process({
