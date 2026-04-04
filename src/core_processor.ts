@@ -357,7 +357,7 @@ if (process.argv[2] === 'test') {
       return {
         initOffset: () => {},
         resetOffset: () => 0,
-        readNewOutput: () => 'test output',
+        readNewOutput: () => ({ content: 'test output', markerFound: false, markerPosition: 0 }),
         clearOffset: () => {},
         hasOffset: () => false,
         startStreaming: async (_sessionName: string, options: { onChunk: (chunk: string) => Promise<void>; onComplete?: () => void }) => {

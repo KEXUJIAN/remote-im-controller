@@ -26,6 +26,16 @@ export interface StreamingOptions {
   markerDetector?: MarkerDetector;
 }
 
+/** readNewOutput 返回结果 */
+export interface ReadNewOutputResult {
+  /** 清理后的内容 */
+  content: string;
+  /** 是否检测到标记 */
+  markerFound: boolean;
+  /** 标记位置（仅在 markerFound 为 true 时有效） */
+  markerPosition: number;
+}
+
 /**
  * Session 输出管理器接口
  */
@@ -37,7 +47,7 @@ export interface SessionOutputManager {
   resetOffset(sessionName: string): number;
   
   /** 读取从指定 offset 开始的新增内容（命令完成后调用） */
-  readNewOutput(sessionName: string, fromOffset: number): string;
+  readNewOutput(sessionName: string, fromOffset: number, markerDetector?: MarkerDetector): ReadNewOutputResult;
   
   /** 清理 session 的 offset（销毁 session 时调用） */
   clearOffset(sessionName: string): void;
@@ -203,17 +213,21 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
   /**
    * 读取从指定 offset 开始的新增内容
    */
-  function readNewOutput(sessionName: string, fromOffset: number): string {
+  function readNewOutput(
+    sessionName: string, 
+    fromOffset: number, 
+    markerDetector?: MarkerDetector
+  ): ReadNewOutputResult {
     const logPath = getLogPath(sessionName);
     
     if (!logPath) {
       logger.warn('readNewOutput', '无法获取日志路径', { sessionName });
-      return '';
+      return { content: '', markerFound: false, markerPosition: 0 };
     }
     
     if (!existsSync(logPath)) {
       logger.debug('readNewOutput', '日志文件不存在', { sessionName, logPath });
-      return '';
+      return { content: '', markerFound: false, markerPosition: 0 };
     }
     
     const currentSize = getFileSize(logPath);
@@ -234,7 +248,7 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     
     if (bytesToRead <= 0) {
       logger.debug('readNewOutput', '没有新内容', { sessionName, fromOffset, currentSize });
-      return '';
+      return { content: '', markerFound: false, markerPosition: 0 };
     }
     
     // 限制最大输出大小
@@ -250,6 +264,16 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
         requestedBytes: bytesToRead, 
         actualBytes: actualBytesToRead 
       });
+    }
+    
+    // 在清理前检测标记
+    let markerFound = false;
+    let markerPosition = 0;
+    
+    if (markerDetector) {
+      const result = markerDetector.check(content);
+      markerFound = result.found;
+      markerPosition = result.position;
     }
     
     // 清理终端控制序列
@@ -269,10 +293,11 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       sessionName, 
       fromOffset, 
       bytesToRead: actualBytesToRead,
-      contentLength: content.length 
+      contentLength: content.length,
+      markerFound 
     });
     
-    return content;
+    return { content, markerFound, markerPosition };
   }
   
   /**
@@ -326,7 +351,7 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
           return;
         }
         
-        const newContent = readNewOutput(sessionName, currentOffset);
+        const result = readNewOutput(sessionName, currentOffset, markerDetector);
         
         // 更新 offset
         const state = sessionStates.get(sessionName);
@@ -334,28 +359,25 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
           streamingOffsets.set(sessionName, state.offset);
         }
         
-        if (newContent) {
+        if (result.content) {
           // 检查标记
-          if (markerDetector) {
-            const { found, position } = markerDetector.check(newContent);
-            if (found) {
-              logger.info('startStreaming', '检测到完成标记', { sessionName, position });
-              
-              // 推送标记之前的内容
-              const contentBeforeMarker = newContent.slice(0, position);
-              if (contentBeforeMarker) {
-                await onChunk(contentBeforeMarker);
-              }
-              
-              // 停止流式推送
-              stopStreaming(sessionName);
-              onComplete?.();
-              return;
+          if (result.markerFound) {
+            logger.info('startStreaming', '检测到完成标记', { sessionName, position: result.markerPosition });
+            
+            // 推送标记之前的内容
+            const contentBeforeMarker = result.content.slice(0, result.markerPosition);
+            if (contentBeforeMarker) {
+              await onChunk(contentBeforeMarker);
             }
+            
+            // 停止流式推送
+            stopStreaming(sessionName);
+            onComplete?.();
+            return;
           }
           
           // 推送新内容
-          await onChunk(newContent);
+          await onChunk(result.content);
         }
       } catch (err) {
         logger.error('startStreaming', '流式推送出错', err, { sessionName });
@@ -454,13 +476,13 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     writeFileSync(testLogFile, '第三行内容\n', { encoding: 'utf8', flag: 'a' });
     
     // 读取新增内容
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
     console.log(`  offset: ${offset}`);
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：应该只包含第三行
-    if (output.includes('第三行内容') && !output.includes('第一行内容') && !output.includes('第二行内容')) {
+    if (result.content.includes('第三行内容') && !result.content.includes('第一行内容') && !result.content.includes('第二行内容')) {
       console.log('  ✓ 通过：只读取到新增内容');
       return true;
     } else {
@@ -495,13 +517,13 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     writeFileSync(testLogFile, '轮转后的新数据\n', 'utf8');
     
     // 读取输出
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
     console.log(`  旧 offset: ${offset}`);
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：应该检测到轮转并读取新数据
-    if (output.includes('轮转后的新数据')) {
+    if (result.content.includes('轮转后的新数据')) {
       console.log('  ✓ 通过：检测到文件轮转');
       return true;
     } else {
@@ -530,12 +552,12 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     // 写入带 ANSI 代码的内容
     writeFileSync(testLogFile, '\x1b[32m绿色文字\x1b[0m\n\x1b[1m粗体\x1b[0m\n', { encoding: 'utf8', flag: 'a' });
     
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：不应包含 ANSI 转义序列
-    if (!output.includes('\x1b') && output.includes('绿色文字') && output.includes('粗体')) {
+    if (!result.content.includes('\x1b') && result.content.includes('绿色文字') && result.content.includes('粗体')) {
       console.log('  ✓ 通过：ANSI 代码已剥离');
       return true;
     } else {
@@ -564,19 +586,19 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     writeFileSync(testLogFile, '不完整的行', { encoding: 'utf8', flag: 'a' });
     
     // 第一次读取应该返回空（行不完整）
-    const output1 = manager.readNewOutput('test-session', offset);
+    const result1 = manager.readNewOutput('test-session', offset);
     
     // 写入换行符使其完整
     writeFileSync(testLogFile, '\n完整的行了\n', { encoding: 'utf8', flag: 'a' });
     
     // 第二次读取应该返回完整内容
-    const output2 = manager.readNewOutput('test-session', offset);
+    const result2 = manager.readNewOutput('test-session', offset);
     
-    console.log(`  第一次输出: ${JSON.stringify(output1)}`);
-    console.log(`  第二次输出: ${JSON.stringify(output2)}`);
+    console.log(`  第一次输出: ${JSON.stringify(result1.content)}`);
+    console.log(`  第二次输出: ${JSON.stringify(result2.content)}`);
     
     // 验证：第一次应该为空，第二次应该包含完整行
-    if (output1 === '' && output2.includes('不完整的行\n完整的行了\n')) {
+    if (result1.content === '' && result2.content.includes('不完整的行\n完整的行了\n')) {
       console.log('  ✓ 通过：行缓冲正确处理');
       return true;
     } else {
@@ -635,12 +657,12 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     // OSC 设置标题: \x1b]0;title\x07 或 \x1b]7;file://...\x1b\\
     writeFileSync(testLogFile, '\x1b]0;my-title\x07正常内容\n\x1b]7;file:///path\x1b\\\n', { encoding: 'utf8', flag: 'a' });
     
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：OSC 序列应被移除
-    if (!output.includes('\x1b]') && output.includes('正常内容')) {
+    if (!result.content.includes('\x1b]') && result.content.includes('正常内容')) {
       console.log('  ✓ 通过：OSC 序列已清理');
       return true;
     } else {
@@ -668,12 +690,12 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     // 写入包含退格符的内容（模拟 zsh 回显：l + 退格 + ll = 最终显示 ll）
     writeFileSync(testLogFile, 'l\x08ll\n', { encoding: 'utf8', flag: 'a' });
     
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：退格符应被正确处理，输出 "ll"
-    if (output.includes('ll') && !output.includes('\x08')) {
+    if (result.content.includes('ll') && !result.content.includes('\x08')) {
       console.log('  ✓ 通过：退格符已正确处理');
       return true;
     } else {
@@ -702,12 +724,12 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'test
     // 注意：这些序列可能在日志中没有 \x1b 前缀
     writeFileSync(testLogFile, '[?2004h[?1l正常输出\n', { encoding: 'utf8', flag: 'a' });
     
-    const output = manager.readNewOutput('test-session', offset);
+    const result = manager.readNewOutput('test-session', offset);
     
-    console.log(`  输出: ${JSON.stringify(output)}`);
+    console.log(`  输出: ${JSON.stringify(result.content)}`);
     
     // 验证：私有模式序列应被移除
-    if (!output.includes('[?2004') && !output.includes('[?1l') && output.includes('正常输出')) {
+    if (!result.content.includes('[?2004') && !result.content.includes('[?1l') && result.content.includes('正常输出')) {
       console.log('  ✓ 通过：私有模式序列已清理');
       return true;
     } else {
