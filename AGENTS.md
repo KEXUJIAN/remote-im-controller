@@ -148,17 +148,6 @@ export interface Config {
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-// src/errors.ts
-export class SessionNotFoundError extends Error {
-  constructor(
-    public sessionName: string,
-    public availableSessions: string[] = []
-  ) {
-    super(`tmux session '${sessionName}' not found`);
-    this.name = 'SessionNotFoundError';
-  }
-}
 ```
 
 ### 错误处理
