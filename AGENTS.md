@@ -285,6 +285,37 @@ SESSION 模式下命令发送后，使用流式推送机制获取输出：
 3. **完成检测**：检测到 PS1 标记时认为命令完成
 4. **忙碌状态**：命令执行期间锁定，拒绝新命令
 
+### PS1 标记注入
+
+使用 `$'...'` ANSI-C quoting 语法确保转义序列正确解释：
+
+**bash**:
+```bash
+export PS1=$'\e]99;CMD_END\a$ '
+```
+
+**zsh**:
+```bash
+unset zle_bracket_paste
+export PS1=$'%{%f%b%k%}\e]99;CMD_END\a%# '
+```
+
+关键点：
+- `\e` = ESC 字符 (0x1b)
+- `\a` = BEL 字符 (0x07)
+- zsh 需要先禁用 `zle_bracket_paste` 避免干扰
+
+### 标记检测顺序
+
+标记检测在终端输出清理**之前**执行：
+
+```
+1. readNewOutput() 读取原始内容
+2. markerDetector.check() 检测标记 ← 在原始内容上检测
+3. cleanTerminalOutput() 清理 OSC 序列
+4. 返回 { content, markerFound, markerPosition }
+```
+
 ### 流式推送配置
 
 | 环境变量 | 默认值 | 说明 |
