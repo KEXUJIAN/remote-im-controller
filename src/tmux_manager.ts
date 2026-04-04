@@ -152,12 +152,19 @@ export function createTmuxManager(
         
         // 注入 PS1 边界标记
         const shell = process.env.SHELL || '/bin/zsh';
-        // 使用模板字符串让 JavaScript 解释转义序列
-        const ps1Marker = shell.includes('bash')
-          ? `PS1='\n\x1b]99;CMD_END\x07\n$ '`
-          : `PS1='%{%f%b%k%}\n\x1b]99;CMD_END\x07\n%# '`;
-        await execTmux(['send-keys', '-t', name, `export ${ps1Marker}`, 'C-m']);
-        logger.debug('createSession', `注入 PS1 标记`, { shell, ps1Marker });
+
+        if (shell.includes('bash')) {
+          // bash: 使用 ANSI-C quoting，\e 是 ESC，\a 是 BEL
+          const ps1Command = `export PS1=$'\\e]99;CMD_END\\a$ '`;
+          await execTmux(['send-keys', '-t', name, ps1Command, 'C-m']);
+          logger.debug('createSession', `注入 PS1 标记 (bash)`, { shell, ps1Command });
+        } else {
+          // zsh: 先禁用干扰功能，再设置 PS1
+          await execTmux(['send-keys', '-t', name, 'unset zle_bracket_paste', 'C-m']);
+          const ps1Command = `export PS1=$'%{%f%b%k%}\\e]99;CMD_END\\a%# '`;
+          await execTmux(['send-keys', '-t', name, ps1Command, 'C-m']);
+          logger.debug('createSession', `注入 PS1 标记 (zsh)`, { shell, ps1Command });
+        }
         
         outputManager.initOffset(name);
         logger.info('createSession', `会话创建成功: ${name}`);
