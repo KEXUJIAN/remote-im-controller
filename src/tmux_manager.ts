@@ -152,9 +152,10 @@ export function createTmuxManager(
         
         // 注入 PS1 边界标记
         const shell = process.env.SHELL || '/bin/zsh';
+        // 使用模板字符串让 JavaScript 解释转义序列
         const ps1Marker = shell.includes('bash')
-          ? 'PS1=\'\\n\\x1b]99;CMD_END\\x07\\n$ \''
-          : 'PS1=\'%{%f%b%k%}\\n\\x1b]99;CMD_END\\x07\\n%# \'';
+          ? `PS1='\n\x1b]99;CMD_END\x07\n$ '`
+          : `PS1='%{%f%b%k%}\n\x1b]99;CMD_END\x07\n%# '`;
         await execTmux(['send-keys', '-t', name, `export ${ps1Marker}`, 'C-m']);
         logger.debug('createSession', `注入 PS1 标记`, { shell, ps1Marker });
         
