@@ -1,33 +1,114 @@
 #!/usr/bin/env bun
 /**
- * omo-bot.ts - WSL 调度脚本
- * 
- * 用于在 WSL 环境中启动和管理 Remote IM Controller
+ * omo-bot.ts - OpenCode 远程调度脚本
+ *
+ * 运行环境: WSL/Linux
+ * 前置条件: Bun, OpenCode CLI
  */
 
-import { spawn, execSync } from 'child_process';
-import { existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { homedir } from 'os';
+import { resolve } from 'path';
+import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, openSync } from 'fs';
+import { execSync, spawn } from 'child_process';
 
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TMUX_SESSION_NAME = 'remote-im-controller';
+// 运行时常量
+const RUNTIME_DIR = resolve(homedir(), '.omo_runtime');
+const PID_FILE = resolve(RUNTIME_DIR, 'omo_server.pid');
+const LOG_FILE = resolve(RUNTIME_DIR, 'omo_server.log');
+const SERVER_URL = 'http://127.0.0.1:4096';
 
 /**
- * 转义 Shell 参数，防止注入攻击
+ * 确保运行时目录存在
  */
-function escapeShellArg(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
+function ensureRuntimeDir(): void {
+  if (!existsSync(RUNTIME_DIR)) {
+    mkdirSync(RUNTIME_DIR, { recursive: true });
+    console.log(`[runtime] 创建目录: ${RUNTIME_DIR}`);
+  }
 }
 
 /**
- * 检查 tmux 会话是否存在
+ * 检查依赖命令是否可用
+ * - bun: Bun 运行时
+ * - opencode: OpenCode CLI
  */
-function sessionExists(name: string): boolean {
+function checkDependencies(): void {
+  const missing: string[] = [];
+  
   try {
-    execSync(`tmux has-session -t ${escapeShellArg(name)} 2>/dev/null`, {
-      stdio: 'ignore'
-    });
+    execSync('which bun', { stdio: 'ignore' });
+  } catch {
+    missing.push('bun');
+  }
+  
+  try {
+    execSync('which opencode', { stdio: 'ignore' });
+  } catch {
+    missing.push('opencode');
+  }
+  
+  if (missing.length > 0) {
+    console.error('\n❌ 错误: 缺少必要依赖\n');
+    for (const cmd of missing) {
+      console.error(`  缺少: ${cmd}`);
+      if (cmd === 'bun') {
+        console.error('  安装: curl -fsSL https://bun.sh/install | bash');
+        console.error('  验证: bun --version');
+      } else if (cmd === 'opencode') {
+        console.error('  安装: npm install -g opencode');
+        console.error('  验证: opencode --version');
+      }
+    }
+    console.error('\n💡 提示: 安装后请确保重新加载 shell 配置:');
+    console.error('   source ~/.bashrc   # 或 ~/.zshrc');
+    console.error('   验证: command -v <命令名>\n');
+    process.exit(1);
+  }
+}
+
+/**
+ * 读取 PID 文件
+ * @returns PID 数字，文件不存在或内容无效返回 null
+ */
+function readPidFile(): number | null {
+  if (!existsSync(PID_FILE)) {
+    return null;
+  }
+  
+  try {
+    const content = readFileSync(PID_FILE, 'utf-8').trim();
+    const pid = parseInt(content, 10);
+    return Number.isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 写入 PID 到文件
+ */
+function writePidFile(pid: number): void {
+  ensureRuntimeDir();
+  writeFileSync(PID_FILE, String(pid), 'utf-8');
+}
+
+/**
+ * 删除 PID 文件
+ */
+function removePidFile(): void {
+  if (existsSync(PID_FILE)) {
+    unlinkSync(PID_FILE);
+  }
+}
+
+/**
+ * 检查进程是否存活
+ * @param pid 进程 ID
+ * @returns true 表示进程存活，false 表示进程不存在
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
     return true;
   } catch {
     return false;
@@ -38,110 +119,174 @@ function sessionExists(name: string): boolean {
  * 启动服务
  */
 function startService(): void {
-  console.log('启动 Remote IM Controller...');
+  checkDependencies();
+  ensureRuntimeDir();
   
-  if (sessionExists(TMUX_SESSION_NAME)) {
-    console.log(`tmux 会话 "${TMUX_SESSION_NAME}" 已存在`);
-    console.log('使用 "omo-bot stop" 先停止现有服务');
-    return;
+  const pid = readPidFile();
+  if (pid !== null) {
+    if (isProcessAlive(pid)) {
+      console.log(`[start] omo-server 已在运行 (PID: ${pid})`);
+      return;
+    } else {
+      console.log(`[start] 检测到 stale PID ${pid}，清理中...`);
+      removePidFile();
+    }
   }
   
-  try {
-    execSync(`tmux new-session -d -s ${TMUX_SESSION_NAME} -c ${escapeShellArg(PROJECT_ROOT)}`, {
-      stdio: 'inherit'
-    });
-    
-    execSync(`tmux send-keys -t ${TMUX_SESSION_NAME} 'bun run start' Enter`, {
-      stdio: 'inherit'
-    });
-    
-    console.log(`服务已在 tmux 会话 "${TMUX_SESSION_NAME}" 中启动`);
-    console.log('使用 "tmux attach -t remote-im-controller" 查看日志');
-  } catch (error) {
-    console.error('启动服务失败:', error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
+  const logFd = openSync(LOG_FILE, 'a');
+  
+  const child = spawn('opencode', ['serve', '--port', '4096', '--hostname', '127.0.0.1'], {
+    stdio: ['ignore', logFd, logFd],
+    detached: true,
+  });
+  
+  child.unref();
+  
+  writePidFile(child.pid!);
+  
+  console.log(`[start] omo-server 已启动 (PID: ${child.pid})`);
+  console.log(`  SERVER_URL: ${SERVER_URL}`);
+  console.log(`  LOG_FILE: ${LOG_FILE}`);
 }
 
 /**
  * 停止服务
+ * 
+ * opencode 通过 bun 启动会产生父子进程，需要 kill 整个进程组（使用 -PID）
  */
 function stopService(): void {
-  console.log('停止 Remote IM Controller...');
+  const pid = readPidFile();
   
-  if (!sessionExists(TMUX_SESSION_NAME)) {
-    console.log('服务未运行');
+  if (pid === null) {
+    console.log('[stop] omo-server 未运行');
     return;
   }
   
+  if (!isProcessAlive(pid)) {
+    console.log('[stop] 服务未运行（已清理过期 PID）');
+    removePidFile();
+    return;
+  }
+  
+  console.log(`[stop] 正在停止 omo-server (PID: ${pid})...`);
+  
+  // 尝试 kill 整个进程组
   try {
-    execSync(`tmux send-keys -t ${TMUX_SESSION_NAME} C-c`, { stdio: 'inherit' });
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    // 进程组不存在，尝试单个进程
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // 进程已经不存在
+    }
+  }
+  
+  // 轮询等待进程退出
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  const interval = setInterval(() => {
+    attempts++;
     
-    setTimeout(() => {
+    if (!isProcessAlive(pid)) {
+      clearInterval(interval);
+      removePidFile();
+      console.log('[stop] omo-server 已停止');
+    } else if (attempts >= maxAttempts) {
+      clearInterval(interval);
+      // 强制终止
       try {
-        execSync(`tmux kill-session -t ${TMUX_SESSION_NAME}`, { stdio: 'inherit' });
-        console.log('服务已停止');
+        process.kill(-pid, 'SIGKILL');
+        console.log('[stop] omo-server 已强制停止');
       } catch {
-        console.log('会话已结束');
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // 进程已不存在
+        }
       }
-    }, 1000);
-  } catch (error) {
-    console.error('停止服务失败:', error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
+      removePidFile();
+    }
+  }, 500);
 }
 
 /**
- * 执行 opencode plan 命令
+ * 执行 plan 命令
+ * 映射: opencode run --agent prometheus --attach <url> <prompt>
  */
-function runPlan(): void {
-  console.log('执行 opencode plan...');
+function runPlan(prompt: string): void {
+  checkDependencies();
   
-  try {
-    const result = spawn('opencode', ['plan'], {
-      cwd: PROJECT_ROOT,
-      stdio: 'inherit'
-    });
-    
-    result.on('error', (error) => {
-      console.error('执行 plan 失败:', error.message);
-      process.exit(1);
-    });
-    
-    result.on('exit', (code) => {
-      process.exit(code ?? 0);
-    });
-  } catch (error) {
-    console.error('执行 plan 失败:', error instanceof Error ? error.message : error);
+  if (!prompt || prompt.trim() === '') {
+    console.error('\n❌ 错误: 缺少 prompt 参数\n');
+    console.error('用法: omo-bot plan <自然语言>');
+    console.error('示例: omo-bot plan 修复登录模块bug\n');
     process.exit(1);
   }
+  
+  const pid = readPidFile();
+  if (pid === null || !isProcessAlive(pid)) {
+    console.error('\n❌ 错误: omo-server 未运行\n');
+    console.error('下一步: omo-bot start\n');
+    process.exit(1);
+  }
+  
+  console.log('[plan] 创建任务计划...');
+  console.log(`  SERVER_URL: ${SERVER_URL}`);
+  console.log(`  prompt: ${prompt}`);
+  
+  const child = spawn('opencode', [
+    'run',
+    '--agent', 'prometheus',
+    '--attach', SERVER_URL,
+    prompt
+  ], {
+    stdio: 'inherit'
+  });
+  
+  child.on('exit', (code) => {
+    process.exit(code ?? 1);
+  });
 }
 
 /**
- * 在 tmux 会话中执行命令
+ * 执行 exec 命令
+ * 映射: opencode run --agent sisyphus --attach <url> <prompt>
  */
-function execCommand(command: string): void {
-  if (!command) {
-    console.error('错误: 缺少命令参数');
-    console.log('用法: omo-bot exec <command>');
+function runExec(prompt: string): void {
+  checkDependencies();
+  
+  if (!prompt || prompt.trim() === '') {
+    console.error('\n❌ 错误: 缺少 prompt 参数\n');
+    console.error('用法: omo-bot exec <自然语言>');
+    console.error('示例: omo-bot exec 实现用户认证功能\n');
     process.exit(1);
   }
   
-  if (!sessionExists(TMUX_SESSION_NAME)) {
-    console.error('错误: 服务未运行');
-    console.log('请先使用 "omo-bot start" 启动服务');
+  const pid = readPidFile();
+  if (pid === null || !isProcessAlive(pid)) {
+    console.error('\n❌ 错误: omo-server 未运行\n');
+    console.error('下一步: omo-bot start\n');
     process.exit(1);
   }
   
-  try {
-    execSync(`tmux send-keys -t ${TMUX_SESSION_NAME} ${escapeShellArg(command)} Enter`, {
-      stdio: 'inherit'
-    });
-    console.log(`命令已发送: ${command}`);
-  } catch (error) {
-    console.error('执行命令失败:', error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
+  console.log('[exec] 执行任务...');
+  console.log(`  SERVER_URL: ${SERVER_URL}`);
+  console.log(`  prompt: ${prompt}`);
+  
+  const child = spawn('opencode', [
+    'run',
+    '--agent', 'sisyphus',
+    '--attach', SERVER_URL,
+    prompt
+  ], {
+    stdio: 'inherit'
+  });
+  
+  child.on('exit', (code) => {
+    process.exit(code ?? 1);
+  });
 }
 
 /**
@@ -149,30 +294,51 @@ function execCommand(command: string): void {
  */
 function showHelp(): void {
   console.log(`
-omo-bot - WSL 调度脚本
+omo-bot - OpenCode 远程调度脚本
+
+运行环境: WSL/Linux
+
+前置条件:
+  1. Bun 运行时
+  2. OpenCode CLI
+  3. ~/.local/bin 在 PATH 中（安装后验证：command -v omo-bot）
+
+安装:
+  npm run install-bot
+
+  安装后会创建软链接:
+    ~/.local/bin/omo-bot -> <项目>/scripts/omo-bot.ts
+
+卸载:
+  npm run uninstall-bot
 
 用法:
   omo-bot <command> [args]
 
 命令:
-  start           启动 Remote IM Controller 服务
-  stop            停止服务
-  plan            执行 opencode plan 命令
-  exec <command>  在服务会话中执行命令
-  help            显示此帮助信息
+  start              启动 omo-server
+  stop               停止 omo-server
+  plan <自然语言>    创建任务计划 (prometheus)
+  exec <自然语言>    执行任务 (sisyphus)
+  help               显示此帮助信息
 
 示例:
-  omo-bot start                 # 启动服务
-  omo-bot stop                  # 停止服务
-  omo-bot plan                  # 执行 plan
-  omo-bot exec "echo hello"     # 在会话中执行命令
-  omo-bot exec "opencode run"   # 运行 opencode
+  omo-bot start
+  omo-bot stop
+  omo-bot plan 修复登录模块bug
+  omo-bot exec 实现用户认证功能
 
-环境变量:
-  TMUX_SESSION_NAME  tmux 会话名称 (默认: remote-im-controller)
+路径说明:
+  安装目录:    ~/.local/bin
+  软链接:      ~/.local/bin/omo-bot
+  运行时目录:  ${RUNTIME_DIR}
+  PID 文件:    ${PID_FILE}
+  日志文件:    ${LOG_FILE}
+  服务地址:    ${SERVER_URL}
 `);
 }
 
+// 主入口
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
@@ -184,10 +350,10 @@ switch (command) {
     stopService();
     break;
   case 'plan':
-    runPlan();
+    runPlan(args.join(' '));
     break;
   case 'exec':
-    execCommand(args[0] ?? '');
+    runExec(args.join(' '));
     break;
   case 'help':
   case '--help':

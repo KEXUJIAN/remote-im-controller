@@ -229,21 +229,61 @@ remote-im-controller/
 
 ## WSL 调度脚本
 
-项目提供 `omo-bot.ts` 脚本用于 WSL 环境管理：
+项目提供 `omo-bot.ts` 脚本作为 OpenCode CLI 的远程调度包装器：
+
+### 前置条件
+
+- Bun 运行时
+- OpenCode CLI (`npm install -g opencode`)
+- `~/.local/bin` 在 PATH 中
+
+### 安装
 
 ```bash
-# 安装到用户 bin 目录
 npm run install-bot
+```
 
-# 使用
-omo-bot start   # 启动服务
-omo-bot stop    # 停止服务
-omo-bot plan    # 执行 opencode plan
-omo-bot exec "command"  # 执行命令
+安装后会创建软链接 `~/.local/bin/omo-bot` -> 项目 `scripts/omo-bot.ts`。
 
-# 卸载
+### 使用
+
+```bash
+# 启动 omo-server
+omo-bot start
+
+# 创建任务计划（通过 prometheus agent）
+omo-bot plan 修复登录模块bug
+
+# 执行任务（通过 sisyphus agent）
+omo-bot exec 实现用户认证功能
+
+# 停止服务
+omo-bot stop
+
+# 查看帮助
+omo-bot help
+```
+
+### 卸载
+
+```bash
 npm run uninstall-bot
 ```
+
+### 路径说明
+
+| 路径类型 | 路径 | 说明 |
+|---------|------|------|
+| 安装目录 | `~/.local/bin` | 软链接所在目录 |
+| 软链接 | `~/.local/bin/omo-bot` | 指向 `scripts/omo-bot.ts` |
+| 运行时目录 | `~/.omo_runtime` | 自动创建 |
+| PID 文件 | `~/.omo_runtime/omo_server.pid` | 记录服务进程 ID |
+| 日志文件 | `~/.omo_runtime/omo_server.log` | 服务输出日志 |
+| 服务地址 | `http://127.0.0.1:4096` | OpenCode serve 监听地址 |
+
+### 工作原理
+
+`plan` 和 `exec` 命令会 attach 到本地运行的 `opencode serve` 服务（默认端口 4096），而不是直接执行 shell 命令。请确保先运行 `omo-bot start` 启动服务。
 
 ## License
 
