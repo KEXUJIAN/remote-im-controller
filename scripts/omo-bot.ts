@@ -152,7 +152,16 @@ function startService(): void {
 /**
  * 停止服务
  * 
- * opencode 通过 bun 启动会产生父子进程，需要 kill 整个进程组（使用 -PID）
+ * 使用 pkill 命令终止服务进程，而非 kill(-pid) 机制。
+ * 
+ * 为什么使用 pkill：
+ * 1. opencode 是 Node.js 包装器，通过 spawnSync 启动实际二进制
+ * 2. startService() 使用 detached: true，让包装器快速退出
+ * 3. 子进程成为孤儿进程（PPID=1），不再属于原进程组
+ * 4. kill(-pid) 需要进程组组长存在才能向组成员传递信号
+ * 5. 孤儿进程的进程组可能已经不存在组长，导致 kill(-pid) 失效
+ * 
+ * pkill -f 通过进程名匹配，能可靠地找到并终止孤儿进程。
  */
 function stopService(): void {
   const pid = readPidFile();
@@ -170,16 +179,14 @@ function stopService(): void {
   
   console.log(`[stop] 正在停止 omo-server (PID: ${pid})...`);
   
-  // 尝试 kill 整个进程组
+  // -f 匹配完整命令行，确保精确匹配 opencode serve 进程
   try {
-    process.kill(-pid, 'SIGTERM');
-  } catch {
-    // 进程组不存在，尝试单个进程
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      // 进程已经不存在
-    }
+    // timeout: 2000 表示 2 秒后强制返回，不等待进程退出
+    execSync('pkill -TERM -f "\\.opencode serve"', { stdio: 'ignore', timeout: 2000 });
+    console.log('[stop] 已发送 SIGTERM 信号');
+  } catch (err) {
+    // 超时或没有匹配进程都忽略，后续 pgrep 会检查进程状态
+    console.log('[stop] 已发送 SIGTERM 信号（或进程不存在）', err);
   }
   
   // 轮询等待进程退出
@@ -189,24 +196,23 @@ function stopService(): void {
   const interval = setInterval(() => {
     attempts++;
     
-    if (!isProcessAlive(pid)) {
-      clearInterval(interval);
-      removePidFile();
-      console.log('[stop] omo-server 已停止');
-    } else if (attempts >= maxAttempts) {
-      clearInterval(interval);
-      // 强制终止
-      try {
-        process.kill(-pid, 'SIGKILL');
-        console.log('[stop] omo-server 已强制停止');
-      } catch {
+    try {
+      execSync('pgrep -f "\\.opencode serve"', { stdio: 'ignore' });
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
         try {
-          process.kill(pid, 'SIGKILL');
-        } catch {
-          // 进程已不存在
+          execSync('pkill -KILL -f "\\.opencode serve"', { stdio: 'ignore' });
+          console.log('[stop] omo-server 已强制停止 (SIGKILL)');
+        } catch (err) {
+          console.log('[stop] 进程已不存在', err);
         }
+        removePidFile();
       }
+    } catch (err) {
+      // pgrep 返回非零表示进程已停止
+      clearInterval(interval);
       removePidFile();
+      console.log('[stop] omo-server 已停止', err);
     }
   }, 500);
 }
