@@ -229,6 +229,7 @@ src/
 ├── command_router.ts         # 指令路由模块
 ├── feishu_bot.ts             # 飞书通信模块
 ├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
+├── marker_detector.ts        # PS1 边界标记检测模块
 ├── utils/
 │   ├── ensure_log_dir.ts     # 日志目录初始化工具
 │   ├── error.ts              # 错误转换工具函数
@@ -262,6 +263,7 @@ src/
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
 | `STREAM_LOG_DIR` | 否 | `./logs/stream/` | tmux pipe-pane 日志目录 |
 | `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
+| `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 流式推送最小间隔 (ms) |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
