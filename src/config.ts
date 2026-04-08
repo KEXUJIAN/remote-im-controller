@@ -7,6 +7,14 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('config');
 
+/** 脱敏敏感字段，保留前缀和后缀 */
+function maskSensitive(value: string, prefix: number = 4): string {
+  if (value.length <= prefix * 2) {
+    return `${value.slice(0, prefix)}****`;
+  }
+  return `${value.slice(0, prefix)}****${value.slice(-prefix)}`;
+}
+
 /** 解析日志级别，无效值返回 'info' */
 function parseLogLevel(value: string | undefined): LogLevel {
   if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
@@ -50,8 +58,8 @@ export function loadConfig(requireFeishu: boolean = true): Config {
 
   if (requireFeishu) {
     logger.info('loadConfig', '配置加载完成', {
-      feishuAppId,
-      adminOpenId,
+      feishuAppId: maskSensitive(feishuAppId || ''),
+      adminOpenId: maskSensitive(adminOpenId || ''),
       tmuxDefaultLines: config.tmuxDefaultLines,
       pollInterval: config.pollInterval,
       pollTimeout: config.pollTimeout,

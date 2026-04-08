@@ -10,6 +10,15 @@ const logger = createLogger('command_parser');
 const BUILTIN_ACTIONS: CommandAction[] = ['list', 'create', 'kill', 'help', 'status'];
 
 /**
+ * 类型守卫 - 检查字符串是否为有效的 CommandAction
+ * @param token 要检查的字符串
+ * @returns 是否为有效的 CommandAction
+ */
+function isCommandAction(token: string): token is CommandAction {
+  return BUILTIN_ACTIONS.includes(token as CommandAction);
+}
+
+/**
  * 分词函数 - 处理引号包裹的参数
  * @param body 输入字符串
  * @returns 分词后的字符串数组
@@ -82,8 +91,8 @@ export function parseCommand(input: string): ParsedCommand | null {
   const firstToken = tokens[0]!.toLowerCase();
 
   // 检查是否是内置动作
-  if (BUILTIN_ACTIONS.includes(firstToken as CommandAction)) {
-    return parseBuiltinAction(firstToken as CommandAction, tokens.slice(1));
+  if (isCommandAction(firstToken)) {
+    return parseBuiltinAction(firstToken, tokens.slice(1));
   }
 
   // 否则视为 exec 动作: <session> <command...>
