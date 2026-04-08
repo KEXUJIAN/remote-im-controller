@@ -10,7 +10,7 @@ import stripAnsi from 'strip-ansi';
 import { createLogger } from './logger.js';
 import { createSessionOutputManager, type SessionOutputManager } from './session_output_manager.js';
 import type { TmuxCaptureResult } from './types.js';
-import { TmuxNotAvailableError } from './errors.js';
+import { TmuxNotAvailableError, SessionNotFoundError } from './errors.js';
 import { toErrorMessage } from './utils/error.js';
 
 const logger = createLogger('tmux_manager');
@@ -26,6 +26,20 @@ export interface TmuxManager {
   getPaneCommand(name: string): Promise<string>;
   getPipeLogPath(name: string): string | undefined;
   getOutputManager(): SessionOutputManager;
+}
+
+/**
+ * 确保会话存在，不存在则抛出 SessionNotFoundError
+ */
+export async function ensureSessionExists(
+  tmuxManager: TmuxManager,
+  sessionName: string
+): Promise<void> {
+  const exists = await tmuxManager.sessionExists(sessionName);
+  if (!exists) {
+    const sessions = await tmuxManager.listSessions();
+    throw new SessionNotFoundError(sessionName, sessions);
+  }
 }
 
 export function createTmuxManager(

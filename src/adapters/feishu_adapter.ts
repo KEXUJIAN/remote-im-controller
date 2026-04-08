@@ -27,9 +27,20 @@ export interface FeishuAdapter extends Adapter {
 export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdapter {
   let processor: CoreProcessor | null = null;
 
-  async function handleTextMessage(event: FeishuMessageEvent): Promise<void> {
+  /**
+   * 检查处理器是否可用，记录警告日志
+   */
+  function requireProcessor(): CoreProcessor | null {
     if (!processor) {
       logger.warn('handle', '处理器未初始化');
+      return null;
+    }
+    return processor;
+  }
+
+  async function handleTextMessage(event: FeishuMessageEvent): Promise<void> {
+    const proc = requireProcessor();
+    if (!proc) {
       return;
     }
 
@@ -45,12 +56,12 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       timestamp: Date.now(),
     };
 
-    await processor.process(message);
+    await proc.process(message);
   }
 
   function handleCardEvent(data: CardActionTriggerEvent): Promise<CardHandlerResponse> {
-    if (!processor) {
-      logger.warn('handle', '处理器未初始化');
+    const proc = requireProcessor();
+    if (!proc) {
       return Promise.resolve({ toast: { type: 'error', content: '处理器未就绪' } });
     }
 
@@ -71,7 +82,7 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       timestamp: Date.now(),
     };
 
-    processor.process(message).catch((error) => {
+    proc.process(message).catch((error) => {
       logger.error('card', '卡片事件处理失败', error);
     });
 
@@ -79,8 +90,8 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
   }
 
   async function handleMenuEvent(data: BotMenuEvent): Promise<void> {
-    if (!processor) {
-      logger.warn('handle', '处理器未初始化');
+    const proc = requireProcessor();
+    if (!proc) {
       return;
     }
 
@@ -95,7 +106,7 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       timestamp: Date.now(),
     };
 
-    await processor.process(message);
+    await proc.process(message);
   }
 
   return {

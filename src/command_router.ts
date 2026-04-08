@@ -4,6 +4,7 @@
 
 import type { CommandContext, CommandResult, CommandHandler } from './types.js';
 import type { TmuxManager } from './tmux_manager.js';
+import { ensureSessionExists } from './tmux_manager.js';
 import { createLogger } from './logger.js';
 import { SessionNotFoundError } from './errors.js';
 import { toError } from './utils/error.js';
@@ -60,11 +61,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
     }
 
     // 检查会话是否存在
-    const exists = await tmuxManager.sessionExists(session);
-    if (!exists) {
-      const sessions = await tmuxManager.listSessions();
-      throw new SessionNotFoundError(session, sessions);
-    }
+    await ensureSessionExists(tmuxManager, session);
 
     // 发送命令
     logger.info('exec', `在会话 ${session} 执行命令: ${parsed.command}`);
@@ -146,11 +143,7 @@ export function createCommandRouter(deps: CommandRouterDeps): CommandRouter {
     }
 
     // 检查会话是否存在
-    const exists = await tmuxManager.sessionExists(session);
-    if (!exists) {
-      const sessions = await tmuxManager.listSessions();
-      throw new SessionNotFoundError(session, sessions);
-    }
+    await ensureSessionExists(tmuxManager, session);
 
     logger.info('kill', `终止会话: ${session}`);
     await tmuxManager.killSession(session);
