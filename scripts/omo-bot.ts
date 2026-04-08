@@ -9,7 +9,7 @@
 import { homedir } from 'os';
 import { resolve } from 'path';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, openSync } from 'fs';
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 
 // 运行时常量
 const RUNTIME_DIR = resolve(homedir(), '.omo_runtime');
@@ -177,44 +177,23 @@ function stopService(): void {
     return;
   }
   
-  console.log(`[stop] 正在停止 omo-server (PID: ${pid})...`);
+  // 使用 spawnSync 直接执行 pkill，避免通过 shell 导致自我匹配
+  const result = spawnSync('pkill', ['-TERM', '-f', '\\.opencode serve'], {
+    timeout: 5000,
+    stdio: 'ignore'
+  });
+
+  removePidFile();
   
-  // -f 匹配完整命令行，确保精确匹配 opencode serve 进程
-  try {
-    // timeout: 2000 表示 2 秒后强制返回，不等待进程退出
-    execSync('pkill -TERM -f "\\.opencode serve"', { stdio: 'ignore', timeout: 2000 });
-    console.log('[stop] 已发送 SIGTERM 信号');
-  } catch (err) {
-    // 超时或没有匹配进程都忽略，后续 pgrep 会检查进程状态
-    console.log('[stop] 已发送 SIGTERM 信号（或进程不存在）', err);
+  if (result.status === 0) {
+    console.log('[stop] omo-server 已停止');
+  } else if (result.status === 1) {
+    console.log('[stop] 没有找到匹配的进程');
+  } else if (result.signal) {
+    console.log('[stop] pkill 被信号终止:', result.signal);
+  } else {
+    console.log('[stop] pkill 异常退出，code:', result.status);
   }
-  
-  // 轮询等待进程退出
-  let attempts = 0;
-  const maxAttempts = 10;
-  
-  const interval = setInterval(() => {
-    attempts++;
-    
-    try {
-      execSync('pgrep -f "\\.opencode serve"', { stdio: 'ignore' });
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        try {
-          execSync('pkill -KILL -f "\\.opencode serve"', { stdio: 'ignore' });
-          console.log('[stop] omo-server 已强制停止 (SIGKILL)');
-        } catch (err) {
-          console.log('[stop] 进程已不存在', err);
-        }
-        removePidFile();
-      }
-    } catch (err) {
-      // pgrep 返回非零表示进程已停止
-      clearInterval(interval);
-      removePidFile();
-      console.log('[stop] omo-server 已停止', err);
-    }
-  }, 500);
 }
 
 /**
