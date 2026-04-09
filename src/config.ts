@@ -4,18 +4,15 @@
 
 import type { Config, LogLevel } from './types.js';
 import { createLogger } from './logger.js';
+import { maskSensitive } from './utils/mask_sensitive.js';
 
 const logger = createLogger('config');
 
-/** 脱敏敏感字段，保留前缀和后缀 */
-function maskSensitive(value: string, prefix: number = 4): string {
-  if (value.length <= prefix * 2) {
-    return `${value.slice(0, prefix)}****`;
-  }
-  return `${value.slice(0, prefix)}****${value.slice(-prefix)}`;
-}
-
-/** 解析日志级别，无效值返回 'info' */
+/**
+ * 解析日志级别
+ * @param value 环境变量值
+ * @returns 有效的日志级别，无效值返回 'info'
+ */
 function parseLogLevel(value: string | undefined): LogLevel {
   if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
     return value;
@@ -23,7 +20,11 @@ function parseLogLevel(value: string | undefined): LogLevel {
   return 'info';
 }
 
-/** 从环境变量加载配置 */
+/**
+ * 从环境变量加载配置
+ * @param requireFeishu 是否要求飞书配置（CLI 模式为 false）
+ * @returns 配置对象
+ */
 export function loadConfig(requireFeishu: boolean = true): Config {
   const feishuAppId = process.env.FEISHU_APP_ID;
   const feishuAppSecret = process.env.FEISHU_APP_SECRET;

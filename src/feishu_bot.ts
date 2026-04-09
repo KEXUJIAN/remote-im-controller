@@ -13,24 +13,12 @@ import type {
 } from './types.js';
 import { ReconnectLimitExceededError } from './errors.js';
 import { createLogger } from './logger.js';
+import { maskSensitive } from './utils/mask_sensitive.js';
 
 const logger = createLogger('feishu_bot');
 
 /** 消息 ID 缓存大小（用于去重） */
 const MESSAGE_ID_CACHE_SIZE = 100;
-
-/**
- * 敏感信息脱敏
- * @param value 原始值
- * @param prefix 保留前缀长度
- * @returns 脱敏后的值
- */
-function maskSensitive(value: string, prefix: number = 4): string {
-  if (value.length <= prefix * 2) {
-    return `${value.slice(0, prefix)}****`;
-  }
-  return `${value.slice(0, prefix)}****${value.slice(-prefix)}`;
-}
 
 /** 卡片事件处理响应 */
 export interface CardHandlerResponse {
