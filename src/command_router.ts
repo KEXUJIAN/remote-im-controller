@@ -7,7 +7,7 @@ import type { TmuxManager } from './tmux_manager.js';
 import { ensureSessionExists } from './tmux_manager.js';
 import { createLogger } from './logger.js';
 import { SessionNotFoundError } from './errors.js';
-import { toError } from './utils/error.js';
+import { toError } from './utils/misc.js';
 
 const logger = createLogger('command_router');
 

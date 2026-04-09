@@ -13,7 +13,7 @@ import type {
 } from './types.js';
 import { ReconnectLimitExceededError } from './errors.js';
 import { createLogger } from './logger.js';
-import { maskSensitive } from './utils/mask_sensitive.js';
+import { maskSensitive } from './utils/misc.js';
 
 const logger = createLogger('feishu_bot');
 

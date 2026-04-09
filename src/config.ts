@@ -4,7 +4,7 @@
 
 import type { Config, LogLevel } from './types.js';
 import { createLogger } from './logger.js';
-import { maskSensitive } from './utils/mask_sensitive.js';
+import { maskSensitive } from './utils/misc.js';
 
 const logger = createLogger('config');
 

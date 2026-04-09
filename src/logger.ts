@@ -5,7 +5,7 @@
 import { appendFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type { LogLevel, LogEntry } from './types.js';
-import { toErrorMessage } from './utils/error.js';
+import { toErrorMessage } from './utils/misc.js';
 
 /** 日志级别优先级映射 */
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {

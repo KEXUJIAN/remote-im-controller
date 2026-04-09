@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from './logger.js';
-import { toError } from './utils/error.js';
+import { toError } from './utils/misc.js';
 import type {
   UnifiedMessage,
   CardEventPayload,

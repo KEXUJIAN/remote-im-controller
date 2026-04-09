@@ -4,7 +4,7 @@
 
 import 'dotenv/config';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
-import { ensureLogDir } from './utils/ensure_log_dir.js';
+import { ensureLogDir } from './utils/misc.js';
 import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';

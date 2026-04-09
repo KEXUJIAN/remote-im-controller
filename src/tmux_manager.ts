@@ -11,7 +11,7 @@ import { createLogger } from './logger.js';
 import { createSessionOutputManager, type SessionOutputManager } from './session_output_manager.js';
 import type { TmuxCaptureResult } from './types.js';
 import { TmuxNotAvailableError, SessionNotFoundError } from './errors.js';
-import { toErrorMessage } from './utils/error.js';
+import { toErrorMessage } from './utils/misc.js';
 
 const logger = createLogger('tmux_manager');
 

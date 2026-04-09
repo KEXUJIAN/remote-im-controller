@@ -193,9 +193,8 @@ remote-im-controller/
 │   ├── feishu_bot.ts       # 飞书通信
 │   ├── session_output_manager.ts # Session 输出管理
 │   ├── utils/              # 工具函数
-│   │   ├── ensure_log_dir.ts     # 日志目录初始化
-│   │   ├── error.ts              # 错误转换
-│   │   └── terminal_cleaner.ts   # 终端序列清理
+│   │   ├── misc.ts                 # 杂项工具（错误处理、脱敏、日志目录）
+│   │   └── terminal_cleaner.ts     # 终端序列清理
 │   ├── services/           # 服务模块
 │   │   └── timeout_checker.ts    # 超时检查
 │   └── adapters/           # 适配器模块

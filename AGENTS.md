@@ -231,9 +231,8 @@ src/
 ├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
 ├── marker_detector.ts        # PS1 边界标记检测模块
 ├── utils/
-│   ├── ensure_log_dir.ts     # 日志目录初始化工具
-│   ├── error.ts              # 错误转换工具函数
-│   └── terminal_cleaner.ts   # 终端序列清理工具
+│   ├── misc.ts                 # 杂项工具（错误处理、脱敏、日志目录）
+│   └── terminal_cleaner.ts     # 终端序列清理工具
 ├── services/
 │   └── timeout_checker.ts    # 会话超时检查服务
 └── adapters/
