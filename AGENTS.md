@@ -167,10 +167,10 @@ export class SessionNotFoundError extends Error {
 }
 ```
 
-**错误转换工具**：使用 `src/utils/error.ts` 中的工具函数
+**错误转换工具**：使用 `src/utils/misc.ts` 中的工具函数
 
 ```typescript
-import { toError, toErrorMessage } from './utils/error.js';
+import { toError, toErrorMessage } from './utils/misc.js';
 
 const error = toError(err);
 const errMsg = toErrorMessage(err);

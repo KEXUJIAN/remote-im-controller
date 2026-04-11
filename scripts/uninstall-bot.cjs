@@ -17,8 +17,8 @@ if (existsSync(CONFIG_FILE)) {
   try {
     const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
     commandName = config.commandName || 'omo';
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error(`[uninstall] 配置文件读取失败，使用默认名称: ${err.message}`);
   }
 }
 

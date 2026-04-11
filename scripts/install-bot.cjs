@@ -21,7 +21,8 @@ function checkBun() {
   try {
     execSync('bun --version', { stdio: 'ignore' });
     return true;
-  } catch {
+  } catch (err) {
+    console.error('[checkBun] bun --version failed:', err.message);
     return false;
   }
 }
@@ -30,7 +31,8 @@ function checkExistingInstallation() {
   let stat;
   try {
     stat = lstatSync(LINK_PATH);
-  } catch {
+  } catch (err) {
+    console.error('[checkExistingInstallation] lstatSync failed:', err.message);
     return { installed: false, reason: 'not_exists' };
   }
 
@@ -41,7 +43,8 @@ function checkExistingInstallation() {
   let linkTarget;
   try {
     linkTarget = readlinkSync(LINK_PATH);
-  } catch {
+  } catch (err) {
+    console.error('[checkExistingInstallation] readlinkSync failed:', err.message);
     return { installed: false, reason: 'readlink_failed' };
   }
 
@@ -61,7 +64,8 @@ function checkInPath() {
       shell: '/bin/bash'
     }).trim();
     return result !== '';
-  } catch {
+  } catch (err) {
+    console.error('[checkInPath] execSync failed:', err.message);
     return false;
   }
 }
