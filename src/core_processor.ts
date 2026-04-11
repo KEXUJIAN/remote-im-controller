@@ -2,6 +2,9 @@
  * Remote IM Controller - 核心处理器
  */
 
+import { homedir } from 'os';
+import { join } from 'path';
+import { existsSync, readFileSync } from 'fs';
 import { createLogger } from './logger.js';
 import { toError } from './utils/misc.js';
 import type {
@@ -20,6 +23,21 @@ import { parseCommand } from './command_parser.js';
 import { createMarkerDetector } from './marker_detector.js';
 
 const logger = createLogger('core_processor');
+
+const RUNTIME_DIR = join(homedir(), '.omo_runtime');
+const CONFIG_FILE = join(RUNTIME_DIR, 'config.json');
+
+function getCommandName(): string {
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8')) as { commandName?: string };
+      return config.commandName || 'omo-bot';
+    }
+  } catch (err) {
+    logger.debug('getCommandName', '读取配置失败，使用默认值', { error: toError(err).message });
+  }
+  return 'omo-bot';
+}
 
 /** 核心处理器依赖 */
 export interface CoreProcessorDeps {
@@ -128,6 +146,16 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       if (!exists) {
         stateManager.resetState(userId);
         await sendMessage(chatId, `❌ 会话 "${sessionName}" 已不存在，已退出会话模式`);
+        return;
+      }
+
+      const trimmedText = text.trim();
+      const commandName = getCommandName();
+
+      if (trimmedText.startsWith(`${commandName} `)) {
+        const safeCommand = `OMO_CHAT_ID=${chatId} ${trimmedText}`;
+        logger.info('handleTextMessage', '转发 omo 命令', { chatId, commandName });
+        await tmuxManager.sendCommand(sessionName, safeCommand);
         return;
       }
 

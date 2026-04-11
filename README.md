@@ -228,7 +228,7 @@ remote-im-controller/
 
 ## WSL 调度脚本
 
-项目提供 `omo-bot.ts` 脚本作为 OpenCode CLI 的远程调度包装器：
+项目提供 `omo` 脚本作为 OpenCode CLI 的远程调度工具。
 
 ### 前置条件
 
@@ -239,34 +239,47 @@ remote-im-controller/
 ### 安装
 
 ```bash
-npm run install-bot
+npm run bi              # 默认安装为 omo
+npm run bi mybot        # 安装为 mybot
 ```
 
-安装后会创建软链接 `~/.local/bin/omo-bot` -> 项目 `scripts/omo-bot.ts`。
-
-### 使用
+### 改名
 
 ```bash
-# 启动 omo-server
-omo-bot start
-
-# 创建任务计划（通过 prometheus agent）
-omo-bot plan 修复登录模块bug
-
-# 执行任务（通过 sisyphus agent）
-omo-bot exec 实现用户认证功能
-
-# 停止服务
-omo-bot stop
-
-# 查看帮助
-omo-bot help
+npm run br mybot        # 改名为 mybot
 ```
 
 ### 卸载
 
 ```bash
-npm run uninstall-bot
+npm run bu
+```
+
+### 命令
+
+```
+omo start                    启动 opencode serve
+omo stop                     停止服务并清理会话
+omo new                      创建新会话（空）
+omo new:exec <prompt>        创建会话并执行
+omo new:plan <prompt>        创建会话并规划
+omo new:deep <prompt>        创建会话并深度研究
+omo new:explore <prompt>     创建会话并只读探索
+omo exec <prompt>            继续当前会话并执行
+omo plan <prompt>            继续当前会话并规划
+omo deep <prompt>            继续当前会话并深度研究
+omo explore <prompt>         继续当前会话并只读探索
+```
+
+### 工作流程
+
+```bash
+omo start                    # 启动服务
+omo new:exec 修复登录bug     # 创建会话并执行
+omo exec 继续实现            # 继续对话
+omo new                      # 开新局
+omo plan 设计认证系统        # 规划模式
+omo stop                     # 停止服务
 ```
 
 ### 路径说明
@@ -274,15 +287,17 @@ npm run uninstall-bot
 | 路径类型 | 路径 | 说明 |
 |---------|------|------|
 | 安装目录 | `~/.local/bin` | 软链接所在目录 |
-| 软链接 | `~/.local/bin/omo-bot` | 指向 `scripts/omo-bot.ts` |
 | 运行时目录 | `~/.omo_runtime` | 自动创建 |
-| PID 文件 | `~/.omo_runtime/omo_server.pid` | 记录服务进程 ID |
+| 配置文件 | `~/.omo_runtime/config.json` | 命令名配置 |
+| PID 文件 | `~/.omo_runtime/omo_server.pid` | 服务进程 ID |
 | 日志文件 | `~/.omo_runtime/omo_server.log` | 服务输出日志 |
-| 服务地址 | `http://127.0.0.1:4096` | OpenCode serve 监听地址 |
+| 服务地址 | `http://127.0.0.1:4096` | OpenCode serve 地址 |
 
-### 工作原理
+### 飞书集成
 
-`plan` 和 `exec` 命令会 attach 到本地运行的 `opencode serve` 服务（默认端口 4096），而不是直接执行 shell 命令。请确保先运行 `omo-bot start` 启动服务。
+在飞书 SESSION 模式下，可以直接发送 `omo xxx` 命令。系统会自动注入 chatId 实现会话隔离。
+
+详细文档见 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
 
 ## License
 

@@ -15,8 +15,9 @@
     "test:output": "tsx src/session_output_manager.ts test",
     "local": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
-    "install-bot": "node scripts/install-bot.cjs",
-    "uninstall-bot": "node scripts/uninstall-bot.cjs"
+    "bi": "node scripts/install-bot.cjs",
+    "br": "node scripts/rename-bot.cjs",
+    "bu": "node scripts/uninstall-bot.cjs"
   },
   "keywords": [
     "feishu",
