@@ -156,7 +156,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         const safeCommand = `OMO_CHAT_ID=${chatId} ${trimmedText}`;
         logger.info('handleTextMessage', '转发 omo 命令', { chatId, commandName });
         await tmuxManager.sendCommand(sessionName, safeCommand);
-        return;
       }
 
       stateManager.setBusy(userId, text);
