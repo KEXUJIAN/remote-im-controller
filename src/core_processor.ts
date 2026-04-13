@@ -160,6 +160,9 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
       stateManager.setBusy(userId, text);
 
+      // 即时响应，防止飞书超时
+      await sendMessage(chatId, `⏳ 正在执行: ${text}`);
+
       try {
         const outputManager = tmuxManager.getOutputManager();
         const markerDetector = createMarkerDetector();
