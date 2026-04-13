@@ -47,7 +47,7 @@ export function tokenize(body: string): string[] {
         // 开始引号
         inQuotes = true;
         quoteChar = char;
-      } else if (char === ' ' || char === '\t') {
+      } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
         // 空格分隔
         if (current.length > 0) {
           tokens.push(current);
