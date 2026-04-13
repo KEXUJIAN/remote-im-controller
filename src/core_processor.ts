@@ -152,10 +152,10 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       const trimmedText = text.trim();
       const commandName = getCommandName();
 
+      let commandToSend = text;
       if (trimmedText.startsWith(`${commandName} `)) {
-        const safeCommand = `OMO_CHAT_ID=${chatId} ${trimmedText}`;
+        commandToSend = `OMO_CHAT_ID=${chatId} ${trimmedText}`;
         logger.info('handleTextMessage', '转发 omo 命令', { chatId, commandName });
-        await tmuxManager.sendCommand(sessionName, safeCommand);
       }
 
       stateManager.setBusy(userId, text);
@@ -166,8 +166,8 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
         outputManager.resetOffset(sessionName);
 
-        logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, text });
-        await tmuxManager.sendCommand(sessionName, text);
+        logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, commandToSend });
+        await tmuxManager.sendCommand(sessionName, commandToSend);
 
         let finalOutput = '';
         const streamComplete = new Promise<void>((resolve) => {
