@@ -266,6 +266,29 @@ src/
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
+## omo 集成
+
+项目内置 omo-bot 脚本用于 OpenCode CLI 远程调度，支持飞书会话隔离。
+
+**何时查阅详细文档**：
+- 需要修改 omo 命令处理逻辑 → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
+- 需要了解会话隔离机制 → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
+- 需要修改 omo-bot.ts → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
+
+**关键环境变量**：
+| 变量 | 说明 |
+|------|------|
+| `OMO_CHAT_ID` | 飞书会话 ID，用于会话隔离，由 core_processor.ts 自动注入 |
+
+**相关代码**：
+- `src/core_processor.ts:156-159` - omo 命令检测与注入
+- `scripts/omo-bot.ts` - 主脚本
+
+**npm 命令**：
+- `npm run bi [name]` - 安装（默认 omo）
+- `npm run br <name>` - 改名
+- `npm run bu` - 卸载
+
 ## SESSION 模式流式推送机制
 
 SESSION 模式下命令发送后，使用流式推送机制获取输出：
