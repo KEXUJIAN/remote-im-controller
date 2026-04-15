@@ -152,7 +152,7 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       const trimmedText = text.trim();
       const commandName = getCommandName();
 
-      let commandToSend = text;
+      let commandToSend = text.replace(/[\r\n]+/g, ' ');
       if (trimmedText.startsWith(`${commandName} `)) {
         commandToSend = `OMO_CHAT_ID=${chatId} ${trimmedText}`;
         logger.info('handleTextMessage', '转发 omo 命令', { chatId, commandName });
@@ -251,6 +251,14 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
    * 处理 MENU_EVENT 消息
    */
   async function handleMenuEvent(userId: string, payload: MenuEventPayload): Promise<void> {
+    logger.debug('handleMenuEvent', `菜单事件`, { userId, eventKey: payload.eventKey });
+
+    // 只处理 exit_wsl_session_mode 事件
+    if (payload.eventKey !== 'exit_wsl_session_mode') {
+      logger.debug('handleMenuEvent', '忽略非退出菜单事件', { eventKey: payload.eventKey });
+      return;
+    }
+
     const state = stateManager.getState(userId);
 
     // 如果在 SESSION 模式，退出
@@ -259,11 +267,11 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
       stateManager.resetState(userId);
       logger.info('handleMenuEvent', `退出 SESSION 模式`, { userId, sessionName });
       await sendToUser(userId, `✅ 已退出会话模式：${sessionName}`);
-      return;
+    } else {
+      // 不在 SESSION 模式时提示用户
+      await sendToUser(userId, '⚠️ 当前不在会话模式');
     }
 
-    // 其他菜单事件
-    logger.debug('handleMenuEvent', `菜单事件`, { userId, eventKey: payload.eventKey });
   }
 
   /**
@@ -513,7 +521,7 @@ if (process.argv[2] === 'test') {
       type: 'MENU_EVENT',
       userId: testUserId,
       chatId: testChatId,
-      payload: { eventKey: 'exit_session' },
+      payload: { eventKey: 'exit_wsl_session_mode' },
       timestamp: Date.now(),
     });
     const stateAfterExit = mockStateManager.getState(testUserId);
@@ -522,6 +530,54 @@ if (process.argv[2] === 'test') {
       console.log('   ✓ 退出成功\n');
     } else {
       console.log('   ✗ 退出失败\n');
+      process.exit(1);
+    }
+
+    // 测试 5.5: MENU_EVENT 忽略非 exit_wsl_session_mode 事件
+    console.log('5.5. 测试 MENU_EVENT 忽略非 exit_wsl_session_mode 事件...');
+    mockStateMap.set(testUserId, {
+      mode: 'SESSION',
+      activeSession: 'test-session',
+      lastActivityTime: Date.now(),
+      isBusy: false,
+    });
+    sentMessages.length = 0;
+    sentUserMessages.length = 0;
+    await processor.process({
+      type: 'MENU_EVENT',
+      userId: testUserId,
+      chatId: testChatId,
+      payload: { eventKey: 'other_menu_item' },
+      timestamp: Date.now(),
+    });
+    const stateAfterOther = mockStateManager.getState(testUserId);
+    const msg55 = getLastUserMessage();
+    if (stateAfterOther.mode === 'SESSION' && stateAfterOther.activeSession === 'test-session' && !msg55) {
+      console.log('   ✓ 正确忽略非退出菜单事件\n');
+    } else {
+      console.log('   ✗ 应忽略但未忽略\n');
+      process.exit(1);
+    }
+    // 重置状态以便后续测试
+    mockStateManager.resetState(testUserId);
+
+    // 测试 5.6: 非 SESSION 模式下点击退出菜单返回提示
+    console.log('5.6. 测试非 SESSION 模式下点击退出菜单返回提示...');
+    // 用户当前在 COMMAND 模式（状态已被 resetState 重置）
+    sentUserMessages.length = 0;
+    await processor.process({
+      type: 'MENU_EVENT',
+      userId: testUserId,
+      chatId: testChatId,
+      payload: { eventKey: 'exit_wsl_session_mode' },
+      timestamp: Date.now(),
+    });
+    const stateAfterExitInCommand = mockStateManager.getState(testUserId);
+    const msg56 = getLastUserMessage();
+    if (stateAfterExitInCommand.mode === 'COMMAND' && msg56 && msg56.message === '⚠️ 当前不在会话模式') {
+      console.log('   ✓ 正确返回提示\n');
+    } else {
+      console.log('   ✗ 提示消息错误\n');
       process.exit(1);
     }
 
