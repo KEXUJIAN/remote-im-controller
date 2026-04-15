@@ -40,7 +40,10 @@ async function main(): Promise<void> {
     tmuxManager,
     config,
     sendMessage: async (_chatId: string, message: string) => {
-      await adapter.sendMessage(_chatId, message);
+      return adapter.sendMessage(_chatId, message);
+    },
+    updateMessage: async (chatId: string, messageId: string, message: string) => {
+      await adapter.updateMessage(chatId, messageId, message);
     },
     sendToUser: async (_openId: string, message: string) => {
       console.log(message);

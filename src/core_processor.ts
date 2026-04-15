@@ -7,6 +7,7 @@ import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { createLogger } from './logger.js';
 import { toError } from './utils/misc.js';
+import { cleanTerminalOutput } from './utils/terminal_cleaner.js';
 import type {
   UnifiedMessage,
   CardEventPayload,
@@ -19,6 +20,7 @@ import type { StateManager } from './state_manager.js';
 import type { CommandRouter } from './command_router.js';
 import type { TmuxManager } from './tmux_manager.js';
 import type { CoreProcessor } from './adapters/adapter.js';
+import type { StreamingOptions } from './session_output_manager.js';
 import { parseCommand } from './command_parser.js';
 import { createMarkerDetector } from './marker_detector.js';
 
@@ -49,8 +51,10 @@ export interface CoreProcessorDeps {
   tmuxManager: TmuxManager;
   /** 配置 */
   config: Config;
-  /** 发送消息函数（使用 chatId） */
-  sendMessage: (chatId: string, message: string) => Promise<void>;
+  /** 发送消息函数（使用 chatId），返回 message_id */
+  sendMessage: (chatId: string, message: string) => Promise<string>;
+  /** 更新消息函数 */
+  updateMessage: (chatId: string, messageId: string, message: string) => Promise<void>;
   /** 发送私聊消息函数（使用 openId） */
   sendToUser: (openId: string, message: string) => Promise<void>;
   /** 发送模板卡片函数（可选） */
@@ -67,7 +71,7 @@ export interface CoreProcessorDeps {
  * 创建核心处理器
  */
 export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
-  const { stateManager, commandRouter, tmuxManager, config, sendMessage, sendToUser, sendTemplateCard, lastSessionMap } = deps;
+  const { stateManager, commandRouter, tmuxManager, config, sendMessage, updateMessage, sendToUser, sendTemplateCard, lastSessionMap } = deps;
 
   /**
    * 处理 TEXT 消息
@@ -172,30 +176,88 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, commandToSend });
         await tmuxManager.sendCommand(sessionName, commandToSend);
 
-        let finalOutput = '';
+        let accumulatedOutput = '';
+        let messageId: string | null = null;
+        let lastUpdateTime = Date.now();
+        const UPDATE_INTERVAL_MS = 5000;
+        const UPDATE_SIZE_THRESHOLD = 1024;
+        const MAX_OUTPUT_SIZE = 8 * 1024;
+
         const streamComplete = new Promise<void>((resolve) => {
           outputManager.startStreaming(sessionName, {
             intervalMs: config.streamPushIntervalMs,
             onChunk: async (chunk) => {
-              finalOutput += chunk;
+              accumulatedOutput += chunk;
+              const now = Date.now();
+              const timeSinceLastUpdate = now - lastUpdateTime;
+              const outputSize = accumulatedOutput.length;
+
+              if (outputSize > 0 && (timeSinceLastUpdate >= UPDATE_INTERVAL_MS || outputSize >= UPDATE_SIZE_THRESHOLD)) {
+                let outputToSend = accumulatedOutput;
+                if (outputToSend.length > MAX_OUTPUT_SIZE) {
+                  outputToSend = outputToSend.slice(-MAX_OUTPUT_SIZE);
+                  logger.warn('handleTextMessage', '输出超过 8KB，已截断', { originalSize: outputSize });
+                }
+
+                const cleanedOutput = cleanTerminalOutput(outputToSend);
+
+                if (messageId) {
+                  try {
+                    await updateMessage(chatId, messageId, `\`\`\`\n${cleanedOutput}\n\`\`\``);
+                  } catch (error) {
+                    logger.warn('handleTextMessage', '消息更新失败（可能触发频控）', { error: toError(error).message });
+                  }
+                } else {
+                  messageId = await sendMessage(chatId, `\`\`\`\n${cleanedOutput}\n\`\`\``);
+                }
+                lastUpdateTime = now;
+              }
+
               logger.debug('handleTextMessage', '流式推送 chunk', { chunkLength: chunk.length });
             },
             onComplete: () => {
               stateManager.clearBusy(userId);
               logger.info('handleTextMessage', '流式推送完成', { sessionName });
-              resolve();
+
+              void (async () => {
+                try {
+                  if (accumulatedOutput) {
+                    let finalOutput = accumulatedOutput;
+                    if (finalOutput.length > MAX_OUTPUT_SIZE) {
+                      finalOutput = finalOutput.slice(-MAX_OUTPUT_SIZE);
+                      logger.warn('handleTextMessage', '最终输出超过 8KB，已截断', { originalSize: accumulatedOutput.length });
+                    }
+                    const cleanedOutput = cleanTerminalOutput(finalOutput);
+                    const finalMessage = `\`\`\`\n${cleanedOutput}\n\`\`\`\n\n✅ 命令执行完成`;
+
+                    if (messageId) {
+                      try {
+                        await updateMessage(chatId, messageId, finalMessage);
+                      } catch (error) {
+                        logger.warn('handleTextMessage', '最终消息更新失败', { error: toError(error).message });
+                      }
+                    } else {
+                      await sendMessage(chatId, finalMessage);
+                    }
+                  } else if (messageId) {
+                    try {
+                      await updateMessage(chatId, messageId, '✅ 命令执行完成（无输出）');
+                    } catch (error) {
+                      logger.warn('handleTextMessage', '无输出消息更新失败', { error: toError(error).message });
+                    }
+                  } else {
+                    await sendMessage(chatId, '✅ 命令执行完成（无输出）');
+                  }
+                } finally {
+                  resolve();
+                }
+              })();
             },
             markerDetector,
           });
         });
 
         await streamComplete;
-
-        if (finalOutput) {
-          await sendMessage(chatId, `\`\`\`\n${finalOutput}\n\`\`\``);
-        } else {
-          await sendMessage(chatId, '✅ 命令执行完成（无输出）');
-        }
 
         stateManager.renewActivity(userId);
       } catch (err) {
@@ -313,7 +375,7 @@ if (process.argv[2] === 'test') {
   const { createTestConfig } = await import('./test_utils.js');
   console.log('=== CoreProcessor 测试 ===\n');
 
-  interface SentMessage { chatId: string; message: string }
+  interface SentMessage { chatId: string; message: string; messageId?: string }
   interface SentUserMessage { userId: string; message: string }
 
   // 创建模拟依赖
@@ -398,11 +460,12 @@ if (process.argv[2] === 'test') {
         readNewOutput: () => ({ content: 'test output', markerFound: false, markerPosition: 0 }),
         clearOffset: () => {},
         hasOffset: () => false,
-        startStreaming: async (_sessionName: string, options: { onChunk: (chunk: string) => Promise<void>; onComplete?: () => void }) => {
-          await options.onChunk('test output');
-          setTimeout(() => {
-            options.onComplete?.();
-          }, 10);
+        startStreaming: (_sessionName: string, options: StreamingOptions) => {
+          options.onChunk('test output').then(() => {
+            setTimeout(() => {
+              options.onComplete?.();
+            }, 10);
+          });
         },
         stopStreaming: () => {},
         isStreaming: () => false,
@@ -423,6 +486,15 @@ if (process.argv[2] === 'test') {
     config: mockConfig,
     sendMessage: async (chatId, message) => {
       sentMessages.push({ chatId, message });
+      return `msg-${sentMessages.length}`;
+    },
+    updateMessage: async (chatId, messageId, message) => {
+      const idx = sentMessages.findIndex(m => m.chatId === chatId && m.messageId === messageId);
+      if (idx >= 0) {
+        sentMessages[idx] = { chatId, message, messageId };
+      } else {
+        sentMessages.push({ chatId, message, messageId });
+      }
     },
     sendToUser: async (userId, message) => {
       sentUserMessages.push({ userId, message });
@@ -488,10 +560,10 @@ if (process.argv[2] === 'test') {
       timestamp: Date.now(),
     });
     const msg3 = getLastMessage();
-    if (msg3 && msg3.message === '```\ntest output\n```') {
+    if (msg3 && msg3.message.includes('test output') && msg3.message.includes('✅ 命令执行完成')) {
       console.log('   ✓ 透传成功\n');
     } else {
-      console.log('   ✗ 透传失败\n');
+      console.log('   ✗ 透传失败，收到:', msg3?.message);
       process.exit(1);
     }
 

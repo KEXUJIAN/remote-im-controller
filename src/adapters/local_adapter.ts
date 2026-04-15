@@ -104,8 +104,13 @@ export function createLocalAdapter(): Adapter {
       processor = null;
     },
 
-    async sendMessage(_chatId: string, message: string): Promise<void> {
+    async sendMessage(_chatId: string, message: string): Promise<string> {
       process.stdout.write(`\n${message}\n\n> `);
+      return 'local-cli-message';
+    },
+
+    async updateMessage(_chatId: string, _messageId: string, message: string): Promise<void> {
+      process.stdout.write(`\n[更新消息]\n${message}\n\n> `);
     },
   };
 }

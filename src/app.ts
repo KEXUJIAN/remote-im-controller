@@ -40,7 +40,12 @@ async function main(): Promise<void> {
     tmuxManager,
     config,
     sendMessage: async (chatId: string, message: string) => {
-      await feishuBot.sendMarkdown(chatId, message);
+      return feishuBot.sendMarkdown(chatId, message);
+    },
+    updateMessage: async (_chatId: string, messageId: string, message: string) => {
+      await feishuBot.updateCard(messageId, {
+        elements: [{ tag: 'markdown', content: message }],
+      });
     },
     sendTemplateCard: async (chatId: string, templateId: string, variables: Record<string, unknown>) => {
       await feishuBot.sendTemplateCard(chatId, templateId, variables);

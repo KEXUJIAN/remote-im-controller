@@ -11,6 +11,7 @@ import type {
   FeishuMessageContent,
   CardActionTriggerEvent,
   BotMenuEvent,
+  FeishuCard,
 } from '../types.js';
 import type { FeishuBot, CardHandlerResponse } from '../feishu_bot.js';
 import type { Adapter, CoreProcessor } from './adapter.js';
@@ -21,7 +22,6 @@ const logger = createLogger('feishu_adapter');
 export interface FeishuAdapter extends Adapter {
   start(processor: CoreProcessor): Promise<void>;
   stop(): Promise<void>;
-  sendMessage(chatId: string, message: string): Promise<void>;
 }
 
 export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdapter {
@@ -126,9 +126,19 @@ export function createFeishuAdapter(_config: Config, bot: FeishuBot): FeishuAdap
       logger.info('stop', '飞书适配器已停止');
     },
 
-    async sendMessage(chatId: string, message: string): Promise<void> {
-      await bot.sendMarkdown(chatId, message);
-      logger.debug('send', '消息已发送', { chatId });
+    async sendMessage(chatId: string, message: string): Promise<string> {
+      const messageId = await bot.sendMarkdown(chatId, message);
+      logger.debug('send', '消息已发送', { chatId, messageId });
+      return messageId;
+    },
+
+    async updateMessage(_chatId: string, messageId: string, message: string): Promise<void> {
+      const card: FeishuCard = {
+        config: { wide_screen_mode: true, enable_forward: true },
+        elements: [{ tag: 'markdown', content: message }],
+      };
+      await bot.updateCard(messageId, card);
+      logger.debug('update', '消息已更新', { messageId });
     },
   };
 }
@@ -144,8 +154,9 @@ async function runTest(): Promise<void> {
     stop: async () => console.log('Mock bot stopped'),
     sendMarkdown: async (chatId: string, text: string) => {
       console.log(`Mock send to ${chatId}: ${text}`);
+      return 'mock_message_id';
     },
-    sendCard: async () => {},
+    sendCard: async () => 'mock_message_id',
     sendTemplateCard: async () => {},
     sendToUser: async (openId: string, message: string) => {
       console.log(`Mock sendToUser to ${openId}: ${message}`);
@@ -155,6 +166,9 @@ async function runTest(): Promise<void> {
     },
     registerMenuHandler: (_handler) => {
       console.log('Menu handler registered');
+    },
+    updateCard: async (messageId: string) => {
+      console.log(`Mock updateCard: ${messageId}`);
     },
   };
 

@@ -34,10 +34,10 @@ export interface FeishuBot {
   start(onMessage: (event: FeishuMessageEvent) => Promise<void>): Promise<void>;
   /** 停止机器人 */
   stop(): Promise<void>;
-  /** 发送 Markdown 消息（使用卡片格式） */
-  sendMarkdown(chatId: string, text: string, title?: string): Promise<void>;
-  /** 发送自定义卡片消息 */
-  sendCard(chatId: string, card: FeishuCard): Promise<void>;
+  /** 发送 Markdown 消息（使用卡片格式），返回 message_id */
+  sendMarkdown(chatId: string, text: string, title?: string): Promise<string>;
+  /** 发送自定义卡片消息，返回 message_id */
+  sendCard(chatId: string, card: FeishuCard): Promise<string>;
   /** 发送模板卡片消息 */
   sendTemplateCard(
     chatId: string,
@@ -50,6 +50,8 @@ export interface FeishuBot {
   registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void;
   /** 发送 Markdown 消息给指定用户（使用 open_id） */
   sendToUser(openId: string, message: string): Promise<void>;
+  /** 更新已发送的卡片消息 */
+  updateCard(messageId: string, card: FeishuCard): Promise<void>;
 }
 
 /** 内部状态 */
@@ -240,7 +242,7 @@ export function createFeishuBot(config: Config): FeishuBot {
     receiveId: string,
     card: FeishuCard,
     receiveIdType: 'chat_id' | 'open_id'
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       const response = await state.client.im.v1.message.create({
         params: {
@@ -257,11 +259,13 @@ export function createFeishuBot(config: Config): FeishuBot {
         throw new Error(`发送失败: ${response.msg || `code ${response.code}`}`);
       }
 
+      const messageId = response.data?.message_id || '';
       logger.debug('send', '消息发送成功', {
         receiveId,
         receiveIdType,
-        messageId: response.data?.message_id,
+        messageId,
       });
+      return messageId;
     } catch (error) {
       logger.error('send', '发送消息失败', error, { receiveId, receiveIdType });
       throw error;
@@ -299,7 +303,7 @@ export function createFeishuBot(config: Config): FeishuBot {
       }
     },
 
-    async sendMarkdown(chatId: string, text: string, title?: string): Promise<void> {
+    async sendMarkdown(chatId: string, text: string, title?: string): Promise<string> {
       const card: FeishuCard = title
         ? {
             config: {
@@ -332,11 +336,11 @@ export function createFeishuBot(config: Config): FeishuBot {
             ],
           };
 
-      await this.sendCard(chatId, card);
+      return await this.sendCard(chatId, card);
     },
 
-    async sendCard(chatId: string, card: FeishuCard): Promise<void> {
-      await sendCardWithType(chatId, card, 'chat_id');
+    async sendCard(chatId: string, card: FeishuCard): Promise<string> {
+      return await sendCardWithType(chatId, card, 'chat_id');
     },
 
     async sendTemplateCard(
@@ -387,6 +391,28 @@ export function createFeishuBot(config: Config): FeishuBot {
     registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void {
       state.menuHandler = handler;
       logger.debug('register', '菜单事件处理器已注册');
+    },
+
+    async updateCard(messageId: string, card: FeishuCard): Promise<void> {
+      try {
+        const response = await state.client.im.v1.message.patch({
+          path: {
+            message_id: messageId,
+          },
+          data: {
+            content: JSON.stringify(card),
+          },
+        });
+
+        if (response.code !== 0) {
+          throw new Error(`更新卡片失败: ${response.msg || `code ${response.code}`}`);
+        }
+
+        logger.debug('updateCard', '卡片更新成功', { messageId });
+      } catch (error) {
+        logger.error('updateCard', '更新卡片失败', error, { messageId });
+        throw error;
+      }
     },
 
     async sendToUser(openId: string, message: string): Promise<void> {

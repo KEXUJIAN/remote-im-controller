@@ -22,6 +22,8 @@ export interface Adapter {
   start(processor: CoreProcessor): Promise<void>;
   /** 停止适配器 */
   stop(): Promise<void>;
-  /** 发送消息到指定聊天 */
-  sendMessage(chatId: string, message: string): Promise<void>;
+  /** 发送消息到指定聊天，返回 message_id */
+  sendMessage(chatId: string, message: string): Promise<string>;
+  /** 更新已发送的消息 */
+  updateMessage(chatId: string, messageId: string, message: string): Promise<void>;
 }
