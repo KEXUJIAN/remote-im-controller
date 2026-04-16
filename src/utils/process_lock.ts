@@ -39,18 +39,6 @@ export function isProcessRunning(pid: number): boolean {
 
   try {
     process.kill(pid, 0);
-    // Linux 下进一步验证进程名，防止 PID 复用
-    if (process.platform === 'linux') {
-      try {
-        const comm = readFileSync(`/proc/${pid}/comm`, 'utf-8').trim();
-        // 检查是否为 node 相关进程
-        return comm.includes('node');
-      } catch {
-        // 无法读取 /proc 文件，可能进程已退出或权限不足
-        // 回退到仅依赖 process.kill 检测
-        return true;
-      }
-    }
     return true;
   } catch {
     return false;
