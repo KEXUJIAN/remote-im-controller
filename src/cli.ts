@@ -3,8 +3,10 @@
  */
 
 import 'dotenv/config';
+import { join } from 'path';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { ensureLogDir } from './utils/misc.js';
+import { acquireLock, releaseLock } from './utils/process_lock.js';
 import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';
@@ -14,12 +16,27 @@ import { createLocalAdapter } from './adapters/local_adapter.js';
 import { createTimeoutChecker } from './services/timeout_checker.js';
 
 const logDir = ensureLogDir();
+const lockFile = join(logDir, 'remote-im-controller.pid');
 
 setupFileLogging({ path: getLogFilePath('cli', logDir), console: false });
 
 const logger = createLogger('cli');
 
 async function main(): Promise<void> {
+  // 获取进程锁，防止多实例并发启动
+  const lockResult = acquireLock(lockFile);
+  if (!lockResult.acquired) {
+    console.error(`Error: ${lockResult.message}`);
+    process.exit(1);
+  }
+
+  // 注册退出处理器释放锁
+  process.on('beforeExit', () => releaseLock(lockFile));
+  process.on('SIGINT', () => {
+    releaseLock(lockFile);
+    process.exit(0);
+  });
+
   console.log('========================================');
   console.log('  Remote IM Controller - Local CLI');
   console.log("  Type 'help' for commands");
