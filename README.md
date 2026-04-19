@@ -144,26 +144,17 @@ export PS1=$'%{%f%b%k%}\e]99;CMD_END\a%# '
 
 ## 模块测试
 
-每个模块可独立测试：
+测试文件位于 `test/` 目录：
 
 ```bash
-# 测试 tmux 控制模块
-npm run test:tmux
-
-# 测试飞书通信模块（模拟模式）
-npm run test:feishu
-
-# 测试状态机模块
-npm run test:state
-
-# 测试核心处理器
-npm run test:core
-
-# 测试 Session 输出管理模块
-npm run test:output
-
-# 类型检查
-npm run typecheck
+npm run test:tmux      # 测试 tmux 控制模块
+npm run test:feishu    # 测试飞书通信模块（模拟模式）
+npm run test:state     # 测试状态机模块
+npm run test:core      # 测试核心处理器
+npm run test:lock      # 测试进程锁模块
+npm run test:router    # 测试指令路由模块
+npm run test:adapter   # 测试本地适配器
+npm run typecheck      # 类型检查
 ```
 
 ## 项目结构
@@ -198,6 +189,16 @@ remote-im-controller/
 │   ├── services/           # 服务模块
 │   │   └── timeout_checker.ts    # 超时检查
 │   └── adapters/           # 适配器模块
+├── test/                   # 测试文件
+│   ├── test_utils.ts       # 测试工具函数
+│   ├── state_manager.test.ts
+│   ├── process_lock.test.ts
+│   ├── tmux_manager.test.ts
+│   ├── local_adapter.test.ts
+│   ├── command_router.test.ts
+│   ├── core_processor.test.ts
+│   ├── feishu_adapter.test.ts
+│   └── feishu_bot.test.ts
 ├── dist/                   # 编译输出
 └── logs/                   # 日志目录
 ```
