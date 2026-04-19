@@ -2,7 +2,7 @@
  * Remote IM Controller - 测试工具函数
  */
 
-import type { Config, LogLevel } from './types.js';
+import type { Config, LogLevel } from '../src/types.js';
 
 /**
  * 创建测试用的配置对象
