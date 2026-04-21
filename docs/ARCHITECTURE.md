@@ -69,16 +69,22 @@
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
+| **config** | `src/config.ts` | 配置加载，统一环境变量解析 |
 | **types** | `src/types.ts` | 类型定义和接口 |
+| **errors** | `src/errors.ts` | 自定义错误类 |
 | **logger** | `src/logger.ts` | 日志记录（文件 + 控制台） |
 | **tmux_manager** | `src/tmux_manager.ts` | 通过 child_process 与 tmux 交互 |
 | **command_parser** | `src/command_parser.ts` | 解析用户指令 |
 | **command_router** | `src/command_router.ts` | 路由指令到处理器 |
 | **state_manager** | `src/state_manager.ts` | 状态机管理（COMMAND/SESSION 模式） |
 | **core_processor** | `src/core_processor.ts` | 核心处理器，统一消息路由 |
-| **stream_consumer** | `src/stream_consumer.ts` | 流式消费者，增量读取日志文件 |
 | **session_output_manager** | `src/session_output_manager.ts` | Session 输出管理，offset 追踪 |
 | **feishu_bot** | `src/feishu_bot.ts` | 飞书 WSS 连接和消息发送 |
+| **utils/ensure_log_dir** | `src/utils/ensure_log_dir.ts` | 日志目录初始化工具 |
+| **utils/error** | `src/utils/error.ts` | 错误转换工具函数 |
+| **utils/terminal_cleaner** | `src/utils/terminal_cleaner.ts` | 终端序列清理工具 |
+| **services/timeout_checker** | `src/services/timeout_checker.ts` | 会话超时检查服务 |
+| **test_utils** | `src/test_utils.ts` | 测试配置工厂函数 |
 | **adapters/adapter** | `src/adapters/adapter.ts` | 适配器接口定义 |
 | **adapters/feishu_adapter** | `src/adapters/feishu_adapter.ts` | 飞书适配器实现 |
 | **adapters/local_adapter** | `src/adapters/local_adapter.ts` | 本地 CLI 适配器 |
@@ -226,81 +232,61 @@ SESSION 模式下，命令发送后使用轮询等待屏幕稳定：
 
 ---
 
-## 五、流式模式
+## 五、SESSION 输出管理
 
 ### 概述
 
-流式模式用于实时推送 tmux 终端输出，适用于长时间运行的命令（如 LLM 流式响应、实时日志等）。
+Session 输出管理模块 (`session_output_manager.ts`) 负责追踪 tmux 会话的输出偏移量，实现增量读取。
 
-### Pipe-Pane 机制
+### Offset 追踪机制
 
-tmux 的 `pipe-pane` 命令可以将 pane 的输出重定向到外部命令或文件：
-
-```
-tmux pipe-pane -t session:pane "cat >> /path/to/logfile"
-```
-
-**工作原理**：
-1. 启动流式模式时，为指定 pane 创建 pipe-pane
-2. 终端输出实时写入日志文件
-3. StreamConsumer 模块按间隔读取并推送新内容
-4. 停止流式模式时关闭 pipe-pane
-
-### StreamConsumer 模块
-
-StreamConsumer 负责消费日志文件并推送更新：
+每次读取 tmux 输出后，记录当前文件偏移量，下次只读取新增内容：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    StreamConsumer 流程                       │
+│                    Offset 追踪流程                           │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  启动流式模式                                                 │
+│  初始化 offset = 0                                          │
 │       │                                                     │
 │       ▼                                                     │
-│  创建 pipe-pane → 输出写入日志文件                            │
+│  读取文件 ──── 记录文件大小                                   │
 │       │                                                     │
 │       ▼                                                     │
-│  ┌─────────────────┐                                        │
-│  │   轮询循环       │                                        │
-│  │       │         │                                        │
-│  │       ▼         │                                        │
-│  │  读取文件增量    │                                        │
-│  │       │         │                                        │
-│  │       ▼         │                                        │
-│  │  有新内容?      │                                        │
-│  │   │     │       │                                        │
-│  │  是      否     │                                        │
-│  │   │      │      │                                        │
-│  │   ▼      └─────►│                                        │
-│  │  推送到飞书      │                                        │
-│  │       │         │                                        │
-│  │       ▼         │                                        │
-│  │  等待间隔        │                                        │
-│  │       │         │                                        │
-│  │       └────────►│                                        │
-│  └─────────────────┘                                        │
+│  检测文件轮转 ─── 文件变小? → 从头读取                         │
 │       │                                                     │
 │       ▼                                                     │
-│  收到停止信号 → 关闭 pipe-pane → 返回最终内容                  │
+│  从 offset 开始读取                                          │
+│       │                                                     │
+│       ▼                                                     │
+│  清理终端序列 ─── 使用 terminal_cleaner.ts                    │
+│       │                                                     │
+│       ▼                                                     │
+│  更新 offset = 当前文件大小                                   │
+│       │                                                     │
+│       ▼                                                     │
+│  返回增量输出                                                │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 流式模式配置
+### 终端序列清理
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `STREAM_LOG_DIR` | `./logs/stream/` | 流式日志文件目录 |
-| `STREAM_PUSH_INTERVAL_MS` | `2000` | 流式推送间隔 (ms) |
-| `STREAM_PUSH_MIN_INTERVAL_MS` | `500` | 最小间隔警告阈值 (ms) |
+`utils/terminal_cleaner.ts` 负责清理终端输出中的控制序列：
 
-### 流式模式工作流程
+- OSC 序列 (`\x1b]...`)：窗口标题、超链接等
+- 私有模式序列 (`\x1b[?...`)：bracket paste mode 等
+- CSI 序列 (`\x1b[...`)：颜色、光标移动等
+- 退格符 (`\x08`)：模拟退格删除
+- 回车符 (`\r`)：换行处理
 
-1. **启动流式**：调用 `tmux pipe-pane` 开始捕获输出
-2. **实时推送**：按 `STREAM_PUSH_INTERVAL_MS` 间隔读取增量并推送
-3. **检测停止**：通过检测前台进程判断命令是否完成
-4. **清理资源**：关闭 pipe-pane，清理日志文件
+### 行缓冲机制
+
+为了支持流式输出场景，实现行缓冲：
+
+- 不完整的行保留在缓冲区
+- 下次读取时合并
+- 遇到换行符时输出完整行
 
 ---
 
@@ -317,6 +303,20 @@ StreamConsumer 负责消费日志文件并推送更新：
 ---
 
 ## 七、配置管理
+
+### 配置加载
+
+配置通过 `src/config.ts` 模块统一加载，支持两种模式：
+
+```typescript
+import { loadConfig } from './config.js';
+
+// 飞书模式：验证飞书配置
+const config = loadConfig(true);
+
+// CLI 模式：跳过飞书配置验证
+const config = loadConfig(false);
+```
 
 ### 环境变量
 
@@ -339,10 +339,8 @@ POLL_STABLE_COUNT=2            # 稳定计数（连续 N 次相同）
 # 会话超时配置
 SESSION_TIMEOUT_MS=600000      # 会话超时时间 (ms)，默认 10 分钟
 
-# 流式模式配置
-STREAM_LOG_DIR=./logs/stream/  # 流式日志文件目录
-STREAM_PUSH_INTERVAL_MS=2000   # 流式推送间隔 (ms)
-STREAM_PUSH_MIN_INTERVAL_MS=500 # 最小间隔警告阈值 (ms)
+# tmux pipe-pane 日志目录
+STREAM_LOG_DIR=./logs/stream/  # tmux 输出日志目录
 
 # 重连配置
 RECONNECT_MAX_RETRIES=5        # 最大重连次数
@@ -386,6 +384,7 @@ NODE_ENV=development           # development 时启用文件日志
 
 ```
 app.ts (飞书模式)
+  ├── config.ts
   ├── feishu_bot.ts
   │     └── @larksuiteoapi/node-sdk
   ├── feishu_adapter.ts
@@ -395,18 +394,28 @@ app.ts (飞书模式)
   │     ├── command_router.ts
   │     │     └── command_parser.ts
   │     └── tmux_manager.ts
-  │           ├── session_output_manager.ts
-  │           └── stream_consumer.ts
+  │           └── session_output_manager.ts
+  │                 └── utils/terminal_cleaner.ts
+  ├── services/timeout_checker.ts
   └── logger.ts
 
 cli.ts (本地测试)
+  ├── config.ts
   ├── local_adapter.ts
   │     └── adapter.ts (接口)
   ├── core_processor.ts
   │     └── tmux_manager.ts
-  │           ├── session_output_manager.ts
-  │           └── stream_consumer.ts
+  │           └── session_output_manager.ts
+  ├── services/timeout_checker.ts
   └── logger.ts
+
+utils/
+  ├── ensure_log_dir.ts    # 被 app.ts, cli.ts 使用
+  ├── error.ts             # 被多个模块使用
+  └── terminal_cleaner.ts  # 被 session_output_manager.ts 使用
+
+errors.ts                   # 被 command_router, feishu_bot, tmux_manager 使用
+test_utils.ts              # 被各模块内联测试使用
 ```
 
 ---
@@ -421,7 +430,6 @@ npm run test:tmux        # tmux 管理器
 npm run test:feishu      # 飞书模块
 npm run test:state       # 状态机
 npm run test:core        # 核心处理器
-npm run test:stream      # 流式消费者
 npm run test:output      # Session 输出管理
 
 # 本地 CLI 测试

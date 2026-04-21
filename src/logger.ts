@@ -5,6 +5,7 @@
 import { appendFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type { LogLevel, LogEntry } from './types.js';
+import { toErrorMessage } from './utils/misc.js';
 
 /** 日志级别优先级映射 */
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -69,7 +70,7 @@ function output(entry: LogEntry): void {
       appendFileSync(fileConfig.path, json, 'utf-8');
     } catch (err) {
       // 文件写入失败（磁盘满、权限不足等），降级到控制台输出
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = toErrorMessage(err);
       process.stderr.write(`[WARN] 日志文件写入失败: ${errorMsg}\n`);
     }
   }

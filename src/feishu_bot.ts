@@ -7,12 +7,12 @@ import type {
   Config,
   FeishuMessageEvent,
   FeishuCard,
-  FeishuMessageContent,
   CardActionTriggerEvent,
   BotMenuEvent,
 } from './types.js';
-import { ReconnectLimitExceededError } from './types.js';
+import { ReconnectLimitExceededError } from './errors.js';
 import { createLogger } from './logger.js';
+import { maskSensitive } from './utils/misc.js';
 
 const logger = createLogger('feishu_bot');
 
@@ -33,10 +33,10 @@ export interface FeishuBot {
   start(onMessage: (event: FeishuMessageEvent) => Promise<void>): Promise<void>;
   /** 停止机器人 */
   stop(): Promise<void>;
-  /** 发送 Markdown 消息（使用卡片格式） */
-  sendMarkdown(chatId: string, text: string, title?: string): Promise<void>;
-  /** 发送自定义卡片消息 */
-  sendCard(chatId: string, card: FeishuCard): Promise<void>;
+  /** 发送 Markdown 消息（使用卡片格式），返回 message_id */
+  sendMarkdown(chatId: string, text: string, title?: string): Promise<string>;
+  /** 发送自定义卡片消息，返回 message_id */
+  sendCard(chatId: string, card: FeishuCard): Promise<string>;
   /** 发送模板卡片消息 */
   sendTemplateCard(
     chatId: string,
@@ -49,6 +49,8 @@ export interface FeishuBot {
   registerMenuHandler(handler: (data: BotMenuEvent) => Promise<void>): void;
   /** 发送 Markdown 消息给指定用户（使用 open_id） */
   sendToUser(openId: string, message: string): Promise<void>;
+  /** 更新已发送的卡片消息 */
+  updateCard(messageId: string, card: FeishuCard): Promise<void>;
 }
 
 /** 内部状态 */
@@ -92,6 +94,20 @@ export function createFeishuBot(config: Config): FeishuBot {
       clearTimeout(state.reconnectTimer);
       state.reconnectTimer = null;
     }
+  }
+
+  /**
+   * 检查操作者是否为管理员
+   * @param operatorOpenId 操作者 Open ID
+   * @param context 上下文描述（用于日志）
+   * @returns 是否为管理员
+   */
+  function checkAdminPermission(operatorOpenId: string | undefined, context: string): boolean {
+    if (operatorOpenId !== config.adminOpenId) {
+      logger.debug('auth', `非管理员${context}，已丢弃`, { operatorOpenId });
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -152,11 +168,7 @@ export function createFeishuBot(config: Config): FeishuBot {
 
           // 权限检查
           const senderOpenId = data.sender?.sender_id?.open_id;
-          if (senderOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员消息，已丢弃', {
-              senderOpenId,
-              expectedOpenId: config.adminOpenId,
-            });
+          if (!checkAdminPermission(senderOpenId, '消息')) {
             return;
           }
 
@@ -180,8 +192,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
 
           const operatorOpenId = data.operator?.open_id;
-          if (operatorOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员卡片事件，已丢弃');
+          if (!checkAdminPermission(operatorOpenId, '卡片事件')) {
             return { toast: { type: 'error', content: '无权限' } };
           }
 
@@ -199,8 +210,7 @@ export function createFeishuBot(config: Config): FeishuBot {
           }
           
           const operatorOpenId = data.operator?.operator_id?.open_id;
-          if (operatorOpenId !== config.adminOpenId) {
-            logger.debug('auth', '非管理员菜单事件，已丢弃');
+          if (!checkAdminPermission(operatorOpenId, '菜单事件')) {
             return;
           }
 
@@ -231,7 +241,7 @@ export function createFeishuBot(config: Config): FeishuBot {
     receiveId: string,
     card: FeishuCard,
     receiveIdType: 'chat_id' | 'open_id'
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       const response = await state.client.im.v1.message.create({
         params: {
@@ -248,11 +258,13 @@ export function createFeishuBot(config: Config): FeishuBot {
         throw new Error(`发送失败: ${response.msg || `code ${response.code}`}`);
       }
 
+      const messageId = response.data?.message_id || '';
       logger.debug('send', '消息发送成功', {
         receiveId,
         receiveIdType,
-        messageId: response.data?.message_id,
+        messageId,
       });
+      return messageId;
     } catch (error) {
       logger.error('send', '发送消息失败', error, { receiveId, receiveIdType });
       throw error;
@@ -268,8 +280,8 @@ export function createFeishuBot(config: Config): FeishuBot {
 
       state.isRunning = true;
       logger.info('start', '启动飞书机器人', {
-        appId: config.feishuAppId,
-        adminOpenId: config.adminOpenId,
+        appId: maskSensitive(config.feishuAppId),
+        adminOpenId: maskSensitive(config.adminOpenId),
       });
 
       await startInternal(onMessage);
@@ -290,7 +302,7 @@ export function createFeishuBot(config: Config): FeishuBot {
       }
     },
 
-    async sendMarkdown(chatId: string, text: string, title?: string): Promise<void> {
+    async sendMarkdown(chatId: string, text: string, title?: string): Promise<string> {
       const card: FeishuCard = title
         ? {
             config: {
@@ -323,11 +335,11 @@ export function createFeishuBot(config: Config): FeishuBot {
             ],
           };
 
-      await this.sendCard(chatId, card);
+      return await this.sendCard(chatId, card);
     },
 
-    async sendCard(chatId: string, card: FeishuCard): Promise<void> {
-      await sendCardWithType(chatId, card, 'chat_id');
+    async sendCard(chatId: string, card: FeishuCard): Promise<string> {
+      return await sendCardWithType(chatId, card, 'chat_id');
     },
 
     async sendTemplateCard(
@@ -380,6 +392,28 @@ export function createFeishuBot(config: Config): FeishuBot {
       logger.debug('register', '菜单事件处理器已注册');
     },
 
+    async updateCard(messageId: string, card: FeishuCard): Promise<void> {
+      try {
+        const response = await state.client.im.v1.message.patch({
+          path: {
+            message_id: messageId,
+          },
+          data: {
+            content: JSON.stringify(card),
+          },
+        });
+
+        if (response.code !== 0) {
+          throw new Error(`更新卡片失败: ${response.msg || `code ${response.code}`}`);
+        }
+
+        logger.debug('updateCard', '卡片更新成功', { messageId });
+      } catch (error) {
+        logger.error('updateCard', '更新卡片失败', error, { messageId });
+        throw error;
+      }
+    },
+
     async sendToUser(openId: string, message: string): Promise<void> {
       const card: FeishuCard = {
         config: {
@@ -397,91 +431,4 @@ export function createFeishuBot(config: Config): FeishuBot {
       await sendCardWithType(openId, card, 'open_id');
     },
   };
-}
-
-// ==================== CLI 测试入口 ====================
-
-async function runTest(): Promise<void> {
-  const testConfig: Config = {
-    feishuAppId: process.env.FEISHU_APP_ID || 'test_app_id',
-    feishuAppSecret: process.env.FEISHU_APP_SECRET || 'test_app_secret',
-    adminOpenId: process.env.ADMIN_OPEN_ID || 'test_admin_open_id',
-    tmuxDefaultLines: 100,
-    tmuxDebug: process.env.TMUX_DEBUG === 'true',
-    pollInterval: 1000,
-    pollTimeout: 30000,
-    pollFinalDelay: 500,
-    pollTimeoutCheckCount: 3,
-    reconnectMaxRetries: 5,
-    reconnectDelay: 3000,
-    logLevel: 'debug',
-    logDir: './logs',
-    sessionTimeoutMs: 600000,
-    streamLogDir: './logs/stream/',
-    streamPushIntervalMs: 2000,
-    streamPushMinIntervalMs: 500,
-  };
-
-  console.log('=== 飞书机器人测试 ===');
-  console.log('配置:', {
-    appId: testConfig.feishuAppId,
-    adminOpenId: testConfig.adminOpenId,
-  });
-
-  const bot = createFeishuBot(testConfig);
-
-  // 模拟消息处理器
-  const onMessage = async (event: FeishuMessageEvent): Promise<void> => {
-    console.log('收到消息:', {
-      chatId: event.message.chat_id,
-      content: event.message.content,
-      sender: event.sender.sender_id?.open_id,
-    });
-
-    // 解析消息内容
-    const content: FeishuMessageContent = JSON.parse(event.message.content);
-    console.log('消息文本:', content.text);
-
-    // 回复
-    await bot.sendMarkdown(
-      event.message.chat_id,
-      `收到消息: ${content.text}`,
-      '测试回复'
-    );
-  };
-
-  try {
-    console.log('\n启动机器人...');
-    await bot.start(onMessage);
-    console.log('机器人已启动，按 Ctrl+C 停止');
-
-    // 保持进程运行
-    process.on('SIGINT', async () => {
-      console.log('\n正在停止...');
-      await bot.stop();
-      console.log('已停止');
-      process.exit(0);
-    });
-
-    // 模拟测试: 5秒后自动停止（如果没有环境变量配置真实连接）
-    if (!process.env.FEISHU_APP_ID) {
-      console.log('\n模拟模式: 5秒后自动停止...');
-      setTimeout(async () => {
-        console.log('模拟测试完成');
-        await bot.stop();
-        process.exit(0);
-      }, 5000);
-    }
-  } catch (error) {
-    console.error('测试失败:', error);
-    process.exit(1);
-  }
-}
-
-// CLI 入口
-if (process.argv[2] === 'test') {
-  runTest().catch((error) => {
-    console.error('测试异常:', error);
-    process.exit(1);
-  });
 }

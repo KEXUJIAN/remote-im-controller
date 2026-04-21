@@ -6,9 +6,10 @@
 
 - 📱 通过飞书接收远程指令
 - 💻 控制 tmux 会话执行命令
-- 📺 抓取终端输出推送回飞书
+- 📺 流式推送终端输出回飞书
 - 🔒 基于用户 ID 的鉴权机制
 - 🔄 自动断线重连
+- 🔐 忙碌状态锁定（防止并发命令冲突）
 - 📝 详细日志记录
 - 🎯 TypeScript 类型安全
 
@@ -65,13 +66,11 @@ vim .env
 - `LOG_LEVEL` - 日志级别（默认 `info`）
 - `TMUX_DEBUG` - 开启 tmux 详细日志（默认 `false`，设为 `true` 时日志写入 `LOG_DIR`）
 - `SESSION_TIMEOUT_MS` - 会话超时时间 ms（默认 600000，即 10 分钟）
+- `STREAM_PUSH_INTERVAL_MS` - 流式推送间隔 ms（默认 2000）
 - `POLL_INTERVAL` - 轮询间隔 ms（默认 3000）
 - `POLL_TIMEOUT` - 轮询超时 ms（默认 60000）
 - `POLL_FINAL_DELAY` - 进程结束后等待时间 ms（默认 500）
 - `POLL_TIMEOUT_CHECK_COUNT` - 超时后额外检测次数（默认 3）
-- `STREAM_LOG_DIR` - 流式日志文件目录（默认 `./logs/stream/`）
-- `STREAM_PUSH_INTERVAL_MS` - 流式推送间隔 ms（默认 2000）
-- `STREAM_PUSH_MIN_INTERVAL_MS` - 最小间隔警告阈值 ms（默认 500）
 
 ### 4. 启动服务
 
@@ -108,49 +107,54 @@ pm2 start ecosystem.config.cjs
 | `/cmd kill <name>` | 终止会话 | `/cmd kill opencode` |
 | `/cmd <session> <command>` | 执行命令 | `/cmd opencode ls -la` |
 
-## SESSION 模式轮询机制
+## SESSION 模式流式推送机制
 
-SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
+SESSION 模式下命令发送后，使用流式推送机制获取输出：
 
-1. **发送前**：记录当前 pane 的前台命令（如 zsh）
-2. **轮询中**：检测 `pane_current_command` 是否回到原始值
-3. **命令完成**：进程回到原始 shell 后，等待 `POLL_FINAL_DELAY` ms 再抓取输出
-4. **超时保护**：最长等待 `POLL_TIMEOUT` ms
+1. **PS1 边界标记**：会话创建时注入 OSC 标记 `\x1b]99;CMD_END\x07`
+2. **流式推送**：定时读取 pipe-pane 日志增量输出
+3. **完成检测**：检测到 PS1 标记时认为命令完成
+4. **忙碌状态**：命令执行期间锁定，拒绝新命令
 
-### 长命令处理
+### PS1 标记注入
 
-如果命令运行时间可能超过 `POLL_TIMEOUT`（默认 60 秒），可以在 `.env` 中调大：
+使用 `$'...'` ANSI-C quoting 语法确保转义序列正确解释：
+
+**bash**:
 ```bash
-POLL_TIMEOUT=300000  # 5 分钟
+export PS1=$'\e]99;CMD_END\a$ '
 ```
 
-超时后会返回当前输出并提示"命令可能仍在运行中，可调大 POLL_TIMEOUT 环境变量"。
+**zsh**:
+```bash
+unset zle_bracket_paste
+export PS1=$'%{%f%b%k%}\e]99;CMD_END\a%# '
+```
+
+关键点：
+- `\e` = ESC 字符 (0x1b)
+- `\a` = BEL 字符 (0x07)
+- zsh 需要先禁用 `zle_bracket_paste` 避免干扰
+
+### 忙碌状态
+
+当用户正在执行命令时，会话处于忙碌状态：
+- 新命令会被拒绝，返回 "⏳ 请等待当前命令完成..."
+- 忙碌状态通过 `StateManager.isBusy()` 检查
 
 ## 模块测试
 
-每个模块可独立测试：
+测试文件位于 `test/` 目录：
 
 ```bash
-# 测试 tmux 控制模块
-npm run test:tmux
-
-# 测试飞书通信模块（模拟模式）
-npm run test:feishu
-
-# 测试状态机模块
-npm run test:state
-
-# 测试核心处理器
-npm run test:core
-
-# 测试流式消费者模块
-npm run test:stream
-
-# 测试 Session 输出管理模块
-npm run test:output
-
-# 类型检查
-npm run typecheck
+npm run test:tmux      # 测试 tmux 控制模块
+npm run test:feishu    # 测试飞书通信模块（模拟模式）
+npm run test:state     # 测试状态机模块
+npm run test:core      # 测试核心处理器
+npm run test:lock      # 测试进程锁模块
+npm run test:router    # 测试指令路由模块
+npm run test:adapter   # 测试本地适配器
+npm run typecheck      # 类型检查
 ```
 
 ## 项目结构
@@ -168,7 +172,9 @@ remote-im-controller/
 ├── src/
 │   ├── app.ts              # 主入口（飞书模式）
 │   ├── cli.ts              # CLI 入口（本地测试）
+│   ├── config.ts           # 配置加载模块
 │   ├── types.ts            # 类型定义
+│   ├── errors.ts           # 自定义错误类
 │   ├── logger.ts           # 日志模块
 │   ├── state_manager.ts    # 状态机模块
 │   ├── core_processor.ts   # 核心处理器
@@ -176,9 +182,23 @@ remote-im-controller/
 │   ├── command_parser.ts   # 指令解析
 │   ├── command_router.ts   # 指令路由
 │   ├── feishu_bot.ts       # 飞书通信
-│   ├── stream_consumer.ts  # 流式消费者
 │   ├── session_output_manager.ts # Session 输出管理
+│   ├── utils/              # 工具函数
+│   │   ├── misc.ts                 # 杂项工具（错误处理、脱敏、日志目录）
+│   │   └── terminal_cleaner.ts     # 终端序列清理
+│   ├── services/           # 服务模块
+│   │   └── timeout_checker.ts    # 超时检查
 │   └── adapters/           # 适配器模块
+├── test/                   # 测试文件
+│   ├── test_utils.ts       # 测试工具函数
+│   ├── state_manager.test.ts
+│   ├── process_lock.test.ts
+│   ├── tmux_manager.test.ts
+│   ├── local_adapter.test.ts
+│   ├── command_router.test.ts
+│   ├── core_processor.test.ts
+│   ├── feishu_adapter.test.ts
+│   └── feishu_bot.test.ts
 ├── dist/                   # 编译输出
 └── logs/                   # 日志目录
 ```
@@ -206,6 +226,79 @@ remote-im-controller/
 ### 连接断开
 
 应用会自动重连，最多重试 5 次。如果持续失败，检查网络连接。
+
+## WSL 调度脚本
+
+项目提供 `omo` 脚本作为 OpenCode CLI 的远程调度工具。
+
+### 前置条件
+
+- Bun 运行时
+- OpenCode CLI (`npm install -g opencode`)
+- `~/.local/bin` 在 PATH 中
+
+### 安装
+
+```bash
+npm run bi              # 默认安装为 omo
+npm run bi mybot        # 安装为 mybot
+```
+
+### 改名
+
+```bash
+npm run br mybot        # 改名为 mybot
+```
+
+### 卸载
+
+```bash
+npm run bu
+```
+
+### 命令
+
+```
+omo start                    启动 opencode serve
+omo stop                     停止服务并清理会话
+omo new                      创建新会话（空）
+omo new:exec <prompt>        创建会话并执行
+omo new:plan <prompt>        创建会话并规划
+omo new:deep <prompt>        创建会话并深度研究
+omo new:explore <prompt>     创建会话并只读探索
+omo exec <prompt>            继续当前会话并执行
+omo plan <prompt>            继续当前会话并规划
+omo deep <prompt>            继续当前会话并深度研究
+omo explore <prompt>         继续当前会话并只读探索
+```
+
+### 工作流程
+
+```bash
+omo start                    # 启动服务
+omo new:exec 修复登录bug     # 创建会话并执行
+omo exec 继续实现            # 继续对话
+omo new                      # 开新局
+omo plan 设计认证系统        # 规划模式
+omo stop                     # 停止服务
+```
+
+### 路径说明
+
+| 路径类型 | 路径 | 说明 |
+|---------|------|------|
+| 安装目录 | `~/.local/bin` | 软链接所在目录 |
+| 运行时目录 | `~/.omo_runtime` | 自动创建 |
+| 配置文件 | `~/.omo_runtime/config.json` | 命令名配置 |
+| PID 文件 | `~/.omo_runtime/omo_server.pid` | 服务进程 ID |
+| 日志文件 | `~/.omo_runtime/omo_server.log` | 服务输出日志 |
+| 服务地址 | `http://127.0.0.1:4096` | OpenCode serve 地址 |
+
+### 飞书集成
+
+在飞书 SESSION 模式下，可以直接发送 `omo xxx` 命令。系统会自动注入 chatId 实现会话隔离。
+
+详细文档见 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
 
 ## License
 

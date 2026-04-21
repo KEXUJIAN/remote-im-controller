@@ -19,19 +19,22 @@ npm run start          # 运行编译后的代码
 npm run local          # 本地 CLI 测试入口
 ```
 
-### 测试（模块内联测试）
-项目没有使用测试框架，采用模块内联测试模式：
+### 测试
+
+项目使用独立的测试文件，位于 `test/` 目录：
 
 ```bash
 npm run test:tmux      # 测试 tmux 控制模块
 npm run test:feishu    # 测试飞书通信模块
 npm run test:state     # 测试状态机模块
 npm run test:core      # 测试核心处理器
-npm run test:stream    # 测试流式消费者模块
-npm run test:output    # 测试 Session 输出管理模块
+npm run test:lock      # 测试进程锁模块
+npm run test:router    # 测试指令路由模块
+npm run test:adapter   # 测试本地适配器
+npm run typecheck      # 类型检查
 ```
 
-**运行单个测试**：直接执行对应命令，测试逻辑在模块末尾的 `if (process.argv[2] === 'test')` 块中。
+**测试文件位置**：`test/*.test.ts`
 
 ### 生产部署
 ```bash
@@ -134,11 +137,13 @@ export function createTmuxManager(defaultLines: number, debug?: boolean): TmuxMa
 ### 类型定义
 
 - 类型集中在 `src/types.ts`
+- 自定义错误类在 `src/errors.ts`
 - 使用 `interface` 定义对象结构
 - 使用 `type` 定义联合类型、工具类型
 - JSDoc 注释使用中文
 
 ```typescript
+// src/types.ts
 export interface Config {
   /** 飞书应用 ID */
   feishuAppId: string;
@@ -151,9 +156,10 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 ### 错误处理
 
-**自定义错误类**：继承 `Error`，添加上下文属性
+**自定义错误类**：继承 `Error`，添加上下文属性，定义在 `src/errors.ts`
 
 ```typescript
+// src/errors.ts
 export class SessionNotFoundError extends Error {
   constructor(
     public sessionName: string,
@@ -165,10 +171,13 @@ export class SessionNotFoundError extends Error {
 }
 ```
 
-**错误转换**：始终转换为 `Error` 实例
+**错误转换工具**：使用 `src/utils/misc.ts` 中的工具函数
 
 ```typescript
-const error = err instanceof Error ? err : new Error(String(err));
+import { toError, toErrorMessage } from './utils/misc.js';
+
+const error = toError(err);
+const errMsg = toErrorMessage(err);
 ```
 
 **禁止空 catch 块**
@@ -212,7 +221,9 @@ export function tokenize(body: string): string[] { /* ... */ }
 src/
 ├── app.ts                    # 主入口（飞书模式）
 ├── cli.ts                    # 本地 CLI 入口
-├── types.ts                  # 类型定义、自定义错误类
+├── config.ts                 # 配置加载模块
+├── types.ts                  # 类型定义
+├── errors.ts                 # 自定义错误类
 ├── logger.ts                 # 日志模块（文件 + 控制台）
 ├── state_manager.ts          # 状态机模块（COMMAND/SESSION 模式）
 ├── core_processor.ts         # 核心处理器（消息路由 + 轮询等待）
@@ -220,12 +231,27 @@ src/
 ├── command_parser.ts         # 指令解析模块
 ├── command_router.ts         # 指令路由模块
 ├── feishu_bot.ts             # 飞书通信模块
-├── stream_consumer.ts        # 流式消费者模块
 ├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
+├── marker_detector.ts        # PS1 边界标记检测模块
+├── utils/
+│   ├── misc.ts                 # 杂项工具（错误处理、脱敏、日志目录）
+│   └── terminal_cleaner.ts     # 终端序列清理工具
+├── services/
+│   └── timeout_checker.ts    # 会话超时检查服务
 └── adapters/
     ├── adapter.ts            # 适配器接口
     ├── feishu_adapter.ts     # 飞书适配器
     └── local_adapter.ts      # 本地适配器（CLI）
+test/
+├── test_utils.ts             # 测试工具函数
+├── state_manager.test.ts     # 状态机模块测试
+├── process_lock.test.ts      # 进程锁模块测试
+├── tmux_manager.test.ts      # tmux 控制模块测试
+├── local_adapter.test.ts     # 本地适配器测试
+├── command_router.test.ts    # 指令路由模块测试
+├── core_processor.test.ts    # 核心处理器测试
+├── feishu_adapter.test.ts    # 飞书适配器测试
+└── feishu_bot.test.ts        # 飞书通信模块测试
 ```
 
 ## 环境变量
@@ -247,27 +273,86 @@ src/
 | `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
-| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | 流式日志文件目录 |
+| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | tmux pipe-pane 日志目录 |
 | `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
-| `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 最小间隔警告阈值 (ms) |
+| `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 流式推送最小间隔 (ms) |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |
 | `NODE_ENV` | 否 | - | `development` 时启用文件日志 |
 
-## SESSION 模式轮询机制
+## omo 集成
 
-SESSION 模式下命令发送后，通过检测 tmux pane 的前台进程状态判断命令是否完成：
+项目内置 omo-bot 脚本用于 OpenCode CLI 远程调度，支持飞书会话隔离。
 
-1. **发送前**：记录当前 pane 的前台命令（如 zsh）
-2. **轮询检测**：每 `POLL_INTERVAL` ms 检测 `pane_current_command`
-3. **完成判定**：当前进程回到原始 shell 时认为命令完成
-4. **最终延迟**：等待 `POLL_FINAL_DELAY` ms 后抓取输出
-5. **超时保护**：最长等待 `POLL_TIMEOUT` ms
-6. **超时额外检测**：超时后额外检测 `POLL_TIMEOUT_CHECK_COUNT` 次
+**何时查阅详细文档**：
+- 需要修改 omo 命令处理逻辑 → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
+- 需要了解会话隔离机制 → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
+- 需要修改 omo-bot.ts → 参考 [docs/OMO_BOT_ARCH.md](docs/OMO_BOT_ARCH.md)
 
-适用于：
-- LLM 流式响应（如 `opencode run "你好"`）
-- 长时间运行的命令
-- 实时日志输出
+**关键环境变量**：
+| 变量 | 说明 |
+|------|------|
+| `OMO_CHAT_ID` | 飞书会话 ID，用于会话隔离，由 core_processor.ts 自动注入 |
+
+**相关代码**：
+- `src/core_processor.ts:156-159` - omo 命令检测与注入
+- `scripts/omo-bot.ts` - 主脚本
+
+**npm 命令**：
+- `npm run bi [name]` - 安装（默认 omo）
+- `npm run br <name>` - 改名
+- `npm run bu` - 卸载
+
+## SESSION 模式流式推送机制
+
+SESSION 模式下命令发送后，使用流式推送机制获取输出：
+
+1. **PS1 边界标记**：会话创建时注入 OSC 标记 `\x1b]99;CMD_END\x07`
+2. **流式推送**：定时读取 pipe-pane 日志增量输出
+3. **完成检测**：检测到 PS1 标记时认为命令完成
+4. **忙碌状态**：命令执行期间锁定，拒绝新命令
+
+### PS1 标记注入
+
+使用 `$'...'` ANSI-C quoting 语法确保转义序列正确解释：
+
+**bash**:
+```bash
+export PS1=$'\e]99;CMD_END\a$ '
+```
+
+**zsh**:
+```bash
+unset zle_bracket_paste
+export PS1=$'%{%f%b%k%}\e]99;CMD_END\a%# '
+```
+
+关键点：
+- `\e` = ESC 字符 (0x1b)
+- `\a` = BEL 字符 (0x07)
+- zsh 需要先禁用 `zle_bracket_paste` 避免干扰
+
+### 标记检测顺序
+
+标记检测在终端输出清理**之前**执行：
+
+```
+1. readNewOutput() 读取原始内容
+2. markerDetector.check() 检测标记 ← 在原始内容上检测
+3. cleanTerminalOutput() 清理 OSC 序列
+4. 返回 { content, markerFound, markerPosition }
+```
+
+### 流式推送配置
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `STREAM_PUSH_INTERVAL_MS` | 2000 | 流式推送间隔 (ms) |
+
+### 忙碌状态
+
+当用户正在执行命令时，会话处于忙碌状态：
+- 新命令会被拒绝，返回 "⏳ 请等待当前命令完成..."
+- 忙碌状态通过 `StateManager.isBusy()` 检查
 
 ## 本地 CLI 测试
 
@@ -305,7 +390,9 @@ npm run local
 1. 创建 `src/new_module.ts`
 2. 定义接口和工厂函数
 3. 导出接口类型供其他模块使用
-4. 在 `types.ts` 添加相关类型定义
+4. 如需新类型，在 `src/types.ts` 添加类型定义
+5. 如需新错误类，在 `src/errors.ts` 添加错误定义
+6. 如需工具函数，在 `src/utils/` 下创建
 
 ### 调试
 

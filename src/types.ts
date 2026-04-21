@@ -49,17 +49,6 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 // ============ tmux 管理 ============
 
-export interface TmuxSession {
-  /** 会话名称 */
-  name: string;
-  /** 是否已附加 */
-  attached: boolean;
-  /** 窗口数量 */
-  windows: number;
-  /** 创建时间 */
-  created: Date;
-}
-
 export interface TmuxCaptureResult {
   /** 原始输出 */
   raw: string;
@@ -69,33 +58,6 @@ export interface TmuxCaptureResult {
   lines: number;
   /** 哈希值 */
   hash: string;
-}
-
-// ============ 流式消费 ============
-
-/** Session 的 pipe-pane 日志信息 */
-export interface SessionPipeInfo {
-  /** 会话名 */
-  sessionName: string;
-  /** 日志文件路径 */
-  logFilePath: string;
-  /** 是否正在消费 */
-  isConsuming: boolean;
-}
-
-/** 流式消费者回调 */
-export type StreamConsumerCallback = (chunk: string) => Promise<void>;
-
-/** 流式消费者接口 */
-export interface StreamConsumer {
-  /** 开始消费日志文件 */
-  start(): void;
-  /** 停止消费 */
-  stop(): void;
-  /** 销毁资源 */
-  destroy(): Promise<void>;
-  /** 重置偏移量（开始新命令时调用） */
-  reset(): void;
 }
 
 // ============ 指令解析 ============
@@ -185,23 +147,6 @@ export type FeishuCardElement =
       }>;
     };
 
-// ============ 轮询状态 ============
-
-export interface PollState {
-  /** 会话名 */
-  session: string;
-  /** 定时器 ID */
-  timerId: NodeJS.Timeout;
-  /** 上次哈希 */
-  lastHash: string;
-  /** 稳定计数 */
-  stableCount: number;
-  /** 开始时间 */
-  startTime: number;
-  /** 聊天 ID */
-  chatId: string;
-}
-
 // ============ 日志 ============
 
 export interface LogEntry {
@@ -218,35 +163,6 @@ export interface LogEntry {
   context?: Record<string, unknown>;
 }
 
-// ============ 错误类型 ============
-
-export class SessionNotFoundError extends Error {
-  constructor(
-    public sessionName: string,
-    public availableSessions: string[] = []
-  ) {
-    super(`tmux session '${sessionName}' not found`);
-    this.name = 'SessionNotFoundError';
-  }
-}
-
-export class ReconnectLimitExceededError extends Error {
-  constructor(
-    public attempts: number,
-    public maxRetries: number
-  ) {
-    super(`Reconnect limit exceeded: ${attempts}/${maxRetries}`);
-    this.name = 'ReconnectLimitExceededError';
-  }
-}
-
-export class TmuxNotAvailableError extends Error {
-  constructor(public reason: string = 'tmux command not found') {
-    super(`tmux not available: ${reason}`);
-    this.name = 'TmuxNotAvailableError';
-  }
-}
-
 // ============ 状态机 ============
 
 /** 聊天模式 */
@@ -260,6 +176,12 @@ export interface ChatState {
   activeSession: string | null;
   /** 最后活动时间戳 */
   lastActivityTime: number;
+  /** 是否忙碌 */
+  isBusy: boolean;
+  /** 当前执行的命令 */
+  busyCommand?: string;
+  /** 忙碌开始时间戳 */
+  busySince?: number;
 }
 
 // ============ 统一消息接口 ============
@@ -327,3 +249,25 @@ export interface CardActionTriggerEvent {
 export type BotMenuEvent = Parameters<
   NonNullable<EventHandles['application.bot.menu_v6']>
 >[0];
+
+// ============ 流式推送相关 ============
+
+/** 流消费者接口 */
+export interface StreamConsumer {
+  /** 启动消费 */
+  start(): void;
+  /** 停止消费 */
+  stop(): void;
+  /** 重置状态 */
+  reset(): void;
+  /** 销毁资源 */
+  destroy(): Promise<void>;
+}
+
+/** 标记检测器接口 */
+export interface MarkerDetector {
+  /** 检测内容中的标记 */
+  check(content: string): { found: boolean; position: number };
+  /** 重置检测器状态 */
+  reset(): void;
+}

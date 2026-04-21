@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    /* 核心配置：不产生编译输出 */
+    "noEmit": true, 
+    /* 重置 rootDir 确保它可以处理当前目录下的文件 */
+    "rootDir": ".",
+    "outDir": "../dist/scripts" // 虽然不输出，但建议写上以防万一
+  },
+  "include": ["**/*"]
+}

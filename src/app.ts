@@ -3,20 +3,20 @@
  */
 
 import 'dotenv/config';
-import { mkdirSync } from 'fs';
-import { resolve } from 'path';
+import { join } from 'path';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
+import { ensureLogDir } from './utils/misc.js';
+import { acquireLock, releaseLock } from './utils/process_lock.js';
+import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';
 import { createFeishuBot } from './feishu_bot.js';
 import { createStateManager } from './state_manager.js';
 import { createCoreProcessor } from './core_processor.js';
 import { createFeishuAdapter } from './adapters/feishu_adapter.js';
-import type { Config, LogLevel } from './types.js';
+import { createTimeoutChecker } from './services/timeout_checker.js';
 
-const logDir = resolve(process.env.LOG_DIR || './logs');
-process.env.TMUX_TMPDIR = resolve(process.env.TMUX_TMPDIR || logDir);
-mkdirSync(process.env.TMUX_TMPDIR, { recursive: true });
+const logDir = ensureLogDir();
 
 if (process.env.NODE_ENV === 'development') {
   setupFileLogging({ path: getLogFilePath('dev', logDir), console: true });
@@ -24,53 +24,18 @@ if (process.env.NODE_ENV === 'development') {
 
 const logger = createLogger('app');
 
-function loadConfig(): Config {
-  const feishuAppId = process.env.FEISHU_APP_ID;
-  const feishuAppSecret = process.env.FEISHU_APP_SECRET;
-  const adminOpenId = process.env.ADMIN_OPEN_ID;
-
-  if (!feishuAppId) throw new Error('缺少必填环境变量: FEISHU_APP_ID');
-  if (!feishuAppSecret) throw new Error('缺少必填环境变量: FEISHU_APP_SECRET');
-  if (!adminOpenId) throw new Error('缺少必填环境变量: ADMIN_OPEN_ID');
-
-  const config: Config = {
-    feishuAppId,
-    feishuAppSecret,
-    adminOpenId,
-    tmuxDefaultLines: parseInt(process.env.TMUX_DEFAULT_LINES || '50', 10),
-    tmuxDebug: process.env.TMUX_DEBUG === 'true',
-    pollInterval: parseInt(process.env.POLL_INTERVAL || '3000', 10),
-    pollTimeout: parseInt(process.env.POLL_TIMEOUT || '60000', 10),
-    pollFinalDelay: parseInt(process.env.POLL_FINAL_DELAY || '500', 10),
-    pollTimeoutCheckCount: parseInt(process.env.POLL_TIMEOUT_CHECK_COUNT || '3', 10),
-    reconnectMaxRetries: parseInt(process.env.RECONNECT_MAX_RETRIES || '5', 10),
-    reconnectDelay: parseInt(process.env.RECONNECT_DELAY || '5000', 10),
-    logLevel: (process.env.LOG_LEVEL as LogLevel) || 'info',
-    logDir: process.env.LOG_DIR || './logs',
-    sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
-    ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
-    streamLogDir: process.env.STREAM_LOG_DIR || './logs/stream/',
-    streamPushIntervalMs: parseInt(process.env.STREAM_PUSH_INTERVAL_MS || '2000', 10),
-    streamPushMinIntervalMs: parseInt(process.env.STREAM_PUSH_MIN_INTERVAL_MS || '500', 10),
-  };
-
-  logger.info('loadConfig', '配置加载完成', {
-    feishuAppId,
-    adminOpenId,
-    tmuxDefaultLines: config.tmuxDefaultLines,
-    pollInterval: config.pollInterval,
-    pollTimeout: config.pollTimeout,
-    pollFinalDelay: config.pollFinalDelay,
-    pollTimeoutCheckCount: config.pollTimeoutCheckCount,
-  });
-
-  return config;
-}
-
 async function main(): Promise<void> {
   logger.info('main', 'Remote IM Controller 启动中...');
 
-  const config = loadConfig();
+  // 获取进程锁，防止多实例并发启动
+  const lockFile = join(logDir, 'remote-im-controller.pid');
+  const lockResult = acquireLock(lockFile);
+  if (!lockResult.acquired) {
+    console.error(`Error: ${lockResult.message}`);
+    process.exit(1);
+  }
+
+  const config = loadConfig(true);
 
   const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir);
   const commandRouter = createCommandRouter({ tmuxManager });
@@ -85,7 +50,12 @@ async function main(): Promise<void> {
     tmuxManager,
     config,
     sendMessage: async (chatId: string, message: string) => {
-      await feishuBot.sendMarkdown(chatId, message);
+      return feishuBot.sendMarkdown(chatId, message);
+    },
+    updateMessage: async (_chatId: string, messageId: string, message: string) => {
+      await feishuBot.updateCard(messageId, {
+        elements: [{ tag: 'markdown', content: message }],
+      });
     },
     sendTemplateCard: async (chatId: string, templateId: string, variables: Record<string, unknown>) => {
       await feishuBot.sendTemplateCard(chatId, templateId, variables);
@@ -108,6 +78,8 @@ async function main(): Promise<void> {
 
     isShuttingDown = true;
     logger.info('shutdown', `收到信号: ${signal}，开始优雅退出`);
+
+    releaseLock(lockFile);
 
     adapter.stop()
       .then(() => {
@@ -133,23 +105,17 @@ async function main(): Promise<void> {
     gracefulShutdown('unhandledRejection');
   });
 
-  setInterval(() => {
-    for (const userId of stateManager.getAllStates()) {
-      const state = stateManager.getState(userId);
-      // 只检查 SESSION 模式的超时
-      if (state.mode !== 'SESSION') {
-        continue;
-      }
-      if (stateManager.checkTimeout(userId, config.sessionTimeoutMs)) {
-        const sessionName = state.activeSession;
-        stateManager.resetState(userId);
-        logger.info('timeout', `SESSION 模式超时退出`, { userId, sessionName });
-        feishuBot.sendToUser(userId, `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式：${sessionName}`).catch((error) => {
-          logger.error('timeout', '发送超时消息失败', error, { userId });
-        });
-      }
+  const timeoutChecker = createTimeoutChecker(
+    stateManager,
+    config.sessionTimeoutMs,
+    (userId, sessionName) => {
+      return feishuBot.sendToUser(
+        userId,
+        `⏰ 已超过 ${config.sessionTimeoutMs / 1000 / 60} 分钟无操作，自动退出会话模式：${sessionName}`
+      );
     }
-  }, 10 * 1000);
+  );
+  timeoutChecker.start();
 
   logger.info('main', '启动飞书适配器...');
   await adapter.start(coreProcessor);
