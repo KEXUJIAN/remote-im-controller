@@ -3,7 +3,6 @@
  */
 
 import 'dotenv/config';
-import { join } from 'path';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { ensureLogDir } from './utils/misc.js';
 import { acquireLock, releaseLock } from './utils/process_lock.js';
@@ -16,11 +15,12 @@ import { createLocalAdapter } from './adapters/local_adapter.js';
 import { createTimeoutChecker } from './services/timeout_checker.js';
 
 const logDir = ensureLogDir();
-const lockFile = join(logDir, 'remote-im-controller.pid');
 
 setupFileLogging({ path: getLogFilePath('cli', logDir), console: false });
 
 const logger = createLogger('cli');
+const config = loadConfig(false);
+const lockFile = config.lockFile;
 
 async function main(): Promise<void> {
   // 获取进程锁，防止多实例并发启动
@@ -43,8 +43,6 @@ async function main(): Promise<void> {
   console.log("  Type 'exit' to quit");
   console.log('========================================');
   console.log();
-
-  const config = loadConfig(false);
 
   const stateManager = createStateManager();
   const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir);

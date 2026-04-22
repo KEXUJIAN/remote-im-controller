@@ -27,6 +27,10 @@ export interface StateManager {
   checkTimeout(chatId: string, timeoutMs: number): boolean;
   /** 重置状态为 COMMAND 模式 */
   resetState(chatId: string): void;
+  /** 加载持久化的状态数据 */
+  loadStates(data: Record<string, ChatState>): void;
+  /** 获取所有状态数据（用于持久化） */
+  getAllStatesData(): Record<string, ChatState>;
   /** 获取所有状态的 chatId 迭代器 */
   getAllStates(): IterableIterator<string>;
   /** 设置忙碌状态 */
@@ -101,6 +105,21 @@ export function createStateManager(): StateManager {
       };
       states.set(chatId, newState);
       logger.info('resetState', `状态重置: ${chatId}`);
+    },
+
+    loadStates(data: Record<string, ChatState>): void {
+      for (const [chatId, state] of Object.entries(data)) {
+        states.set(chatId, { ...state });
+      }
+      logger.info('loadStates', '状态加载完成', { count: states.size });
+    },
+
+    getAllStatesData(): Record<string, ChatState> {
+      const data: Record<string, ChatState> = {};
+      for (const [chatId, state] of states.entries()) {
+        data[chatId] = { ...state };
+      }
+      return data;
     },
 
     getAllStates(): IterableIterator<string> {

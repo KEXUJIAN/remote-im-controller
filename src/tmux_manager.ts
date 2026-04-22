@@ -4,6 +4,7 @@
 
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
+import { existsSync } from 'fs';
 import { mkdir, writeFile, unlink } from 'fs/promises';
 import { resolve } from 'path';
 import stripAnsi from 'strip-ansi';
@@ -26,6 +27,10 @@ export interface TmuxManager {
   getPaneCommand(name: string): Promise<string>;
   getPipeLogPath(name: string): string | undefined;
   getOutputManager(): SessionOutputManager;
+  /** 恢复 pipe-pane 会话 */
+  recoverSessions(sessionData: Record<string, { logPath: string }>): Promise<string[]>;
+  /** 获取当前活跃的 pipe 映射 */
+  getActivePipes(): Record<string, string>;
 }
 
 /**
@@ -275,6 +280,40 @@ export function createTmuxManager(
 
     getOutputManager(): SessionOutputManager {
       return outputManager;
+    },
+
+    async recoverSessions(sessionData: Record<string, { logPath: string }>): Promise<string[]> {
+      const recovered: string[] = [];
+      const existingSessions = await this.listSessions();
+
+      for (const [sessionName, data] of Object.entries(sessionData)) {
+        // 检查会话是否还存在
+        if (!existingSessions.includes(sessionName)) {
+          logger.info('recoverSessions', `会话已不存在: ${sessionName}`);
+          continue;
+        }
+
+        // 检查日志文件是否存在
+        if (!existsSync(data.logPath)) {
+          logger.warn('recoverSessions', `日志文件不存在: ${data.logPath}`);
+          // 尝试重新设置 pipe-pane
+        }
+
+        // 恢复 activePipes 映射
+        activePipes.set(sessionName, data.logPath);
+        recovered.push(sessionName);
+        logger.info('recoverSessions', `会话恢复: ${sessionName}`, { logPath: data.logPath });
+      }
+
+      return recovered;
+    },
+
+    getActivePipes(): Record<string, string> {
+      const result: Record<string, string> = {};
+      for (const [session, path] of activePipes.entries()) {
+        result[session] = path;
+      }
+      return result;
     },
   };
 }

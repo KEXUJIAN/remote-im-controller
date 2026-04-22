@@ -63,6 +63,12 @@ export interface SessionOutputManager {
   
   /** 检查是否正在流式推送 */
   isStreaming(sessionName: string): boolean;
+  
+  /** 加载持久化的会话状态 */
+  loadSessionStates(data: Record<string, { offset: number; lineBuffer: string; logPath: string }>): void;
+  
+  /** 获取所有会话状态数据（用于持久化） */
+  getAllSessionStatesData(): Record<string, { offset: number; lineBuffer: string; logPath: string }>;
 }
 
 /**
@@ -411,6 +417,43 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     return streamingTimers.has(sessionName);
   }
   
+  /**
+   * 加载持久化的会话状态
+   */
+  function loadSessionStates(
+    data: Record<string, { offset: number; lineBuffer: string; logPath: string }>
+  ): void {
+    for (const [sessionName, state] of Object.entries(data)) {
+      sessionStates.set(sessionName, {
+        offset: state.offset,
+        lineBuffer: state.lineBuffer,
+      });
+      // 恢复 logPath 到 activePipes（由 TmuxManager 处理）
+    }
+    logger.info('loadSessionStates', '会话状态加载完成', { count: sessionStates.size });
+  }
+  
+  /**
+   * 获取所有会话状态数据（用于持久化）
+   */
+  function getAllSessionStatesData(): Record<string, {
+    offset: number;
+    lineBuffer: string;
+    logPath: string;
+  }> {
+    const data: Record<string, { offset: number; lineBuffer: string; logPath: string }> = {};
+    for (const [sessionName, state] of sessionStates.entries()) {
+      // logPath 需要从外部获取，这里用空字符串占位
+      // 实际 logPath 由 TmuxManager.getActivePipes() 提供
+      data[sessionName] = {
+        offset: state.offset,
+        lineBuffer: state.lineBuffer,
+        logPath: '', // 占位，由调用方合并
+      };
+    }
+    return data;
+  }
+  
   return {
     initOffset,
     resetOffset,
@@ -420,6 +463,8 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     startStreaming,
     stopStreaming,
     isStreaming,
+    loadSessionStates,
+    getAllSessionStatesData,
   };
 }
 

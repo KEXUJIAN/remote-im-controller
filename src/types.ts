@@ -43,6 +43,12 @@ export interface Config {
   streamPushIntervalMs: number;
   /** 流式推送最小间隔警告阈值 (ms)，默认 500 */
   streamPushMinIntervalMs: number;
+  /** 实例 ID，用于多实例隔离（dev/cli/prod） */
+  instanceId: string;
+  /** 状态文件路径 */
+  stateFile: string;
+  /** 进程锁文件路径 */
+  lockFile: string;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

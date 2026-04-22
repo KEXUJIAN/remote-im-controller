@@ -36,6 +36,12 @@ export function loadConfig(requireFeishu: boolean = true): Config {
     if (!adminOpenId) throw new Error('缺少必填环境变量: ADMIN_OPEN_ID');
   }
 
+  // 确定 INSTANCE_ID（优先级：INSTANCE_ID 环境变量 > NODE_ENV > 默认 'cli'）
+  const instanceId = process.env.INSTANCE_ID 
+    || (process.env.NODE_ENV === 'development' ? 'dev' 
+      : process.env.NODE_ENV === 'production' ? 'prod' 
+      : 'cli');
+
   const config: Config = {
     feishuAppId: feishuAppId || 'local-cli',
     feishuAppSecret: feishuAppSecret || 'local-cli',
@@ -52,9 +58,12 @@ export function loadConfig(requireFeishu: boolean = true): Config {
     logDir: process.env.LOG_DIR || './logs',
     sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
     ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
-    streamLogDir: process.env.STREAM_LOG_DIR || './logs/stream/',
+    streamLogDir: process.env.STREAM_LOG_DIR || `./logs/stream-${instanceId}/`,
     streamPushIntervalMs: parseInt(process.env.STREAM_PUSH_INTERVAL_MS || '2000', 10),
     streamPushMinIntervalMs: parseInt(process.env.STREAM_PUSH_MIN_INTERVAL_MS || '500', 10),
+    instanceId,
+    stateFile: process.env.STATE_FILE || `./logs/state-${instanceId}.json`,
+    lockFile: process.env.LOCK_FILE || `./logs/remote-im-controller-${instanceId}.pid`,
   };
 
   if (requireFeishu) {

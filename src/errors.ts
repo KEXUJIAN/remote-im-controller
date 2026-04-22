@@ -37,3 +37,17 @@ export class TmuxNotAvailableError extends Error {
     this.name = 'TmuxNotAvailableError';
   }
 }
+
+/**
+ * 状态持久化错误
+ */
+export class StatePersistenceError extends Error {
+  constructor(
+    public operation: 'load' | 'save' | 'flush' | 'parse',
+    message: string,
+    public cause?: unknown
+  ) {
+    super(`State persistence error (${operation}): ${message}`);
+    this.name = 'StatePersistenceError';
+  }
+}
