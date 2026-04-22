@@ -5,10 +5,10 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createStatePersistence } from '../src/state_persistence.js';
-import { StatePersistenceError } from '../src/errors.js';
-import type { PersistedState, SessionStateData } from '../src/state_persistence.js';
-import type { ChatState } from '../src/types.js';
+import { createStatePersistence } from '../state_persistence.js';
+import { StatePersistenceError } from '../errors.js';
+import type { PersistedState, SessionStateData } from '../state_persistence.js';
+import type { ChatState } from '../types.js';
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

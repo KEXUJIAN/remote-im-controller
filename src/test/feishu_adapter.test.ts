@@ -2,10 +2,10 @@
  * Remote IM Controller - FeishuAdapter 模块测试
  */
 
-import { createFeishuAdapter } from '../src/adapters/feishu_adapter.js';
-import type { FeishuBot } from '../src/feishu_bot.js';
-import type { CoreProcessor } from '../src/adapters/adapter.js';
-import type { UnifiedMessage } from '../src/types.js';
+import { createFeishuAdapter } from '../adapters/feishu_adapter.js';
+import type { FeishuBot } from '../feishu_bot.js';
+import type { CoreProcessor } from '../adapters/adapter.js';
+import type { UnifiedMessage } from '../types.js';
 import { createTestConfig } from './test_utils.js';
 
 async function main() {

@@ -2,7 +2,7 @@
  * Remote IM Controller - 测试工具函数
  */
 
-import type { Config, LogLevel } from '../src/types.js';
+import type { Config, LogLevel } from '../types.js';
 
 /**
  * 创建测试用的配置对象
@@ -28,6 +28,9 @@ export function createTestConfig(overrides: Partial<Config> = {}): Config {
     streamLogDir: './logs/stream_test/',
     streamPushIntervalMs: 100,
     streamPushMinIntervalMs: 50,
+    instanceId: 'test-instance',
+    stateFile: './logs/test/state-test.json',
+    lockFile: './logs/test/remote-im-controller-test.pid',
     ...overrides,
   };
 }

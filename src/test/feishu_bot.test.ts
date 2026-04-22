@@ -2,8 +2,8 @@
  * Remote IM Controller - FeishuBot 模块测试
  */
 
-import { createFeishuBot } from '../src/feishu_bot.js';
-import type { FeishuMessageEvent, FeishuMessageContent } from '../src/types.js';
+import { createFeishuBot } from '../feishu_bot.js';
+import type { FeishuMessageEvent, FeishuMessageContent } from '../types.js';
 import { createTestConfig } from './test_utils.js';
 
 async function main() {

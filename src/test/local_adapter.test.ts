@@ -2,8 +2,8 @@
  * Remote IM Controller - LocalAdapter 模块测试
  */
 
-import { parseInput } from '../src/adapters/local_adapter.js';
-import type { CardEventPayload, MenuEventPayload } from '../src/types.js';
+import { parseInput } from '../adapters/local_adapter.js';
+import type { CardEventPayload, MenuEventPayload } from '../types.js';
 
 function main() {
   console.log('=== 测试 parseInput ===\n');

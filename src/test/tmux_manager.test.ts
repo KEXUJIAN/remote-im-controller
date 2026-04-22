@@ -2,7 +2,7 @@
  * Remote IM Controller - TmuxManager 模块测试
  */
 
-import { createTmuxManager } from '../src/tmux_manager.js';
+import { createTmuxManager } from '../tmux_manager.js';
 import { mkdirSync, existsSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 

@@ -2,7 +2,7 @@
  * Remote IM Controller - StateManager 模块测试
  */
 
-import { createStateManager } from '../src/state_manager.js';
+import { createStateManager } from '../state_manager.js';
 
 async function main() {
   console.log('=== StateManager 测试 ===\n');

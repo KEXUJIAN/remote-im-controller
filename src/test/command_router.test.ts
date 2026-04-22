@@ -2,8 +2,8 @@
  * Remote IM Controller - CommandRouter 模块测试
  */
 
-import { createCommandRouter } from '../src/command_router.js';
-import { createTmuxManager } from '../src/tmux_manager.js';
+import { createCommandRouter } from '../command_router.js';
+import { createTmuxManager } from '../tmux_manager.js';
 import { createTestConfig } from './test_utils.js';
 
 async function main() {

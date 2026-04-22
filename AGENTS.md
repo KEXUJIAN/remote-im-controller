@@ -21,7 +21,7 @@ npm run local          # 本地 CLI 测试入口
 
 ### 测试
 
-项目使用独立的测试文件，位于 `test/` 目录：
+项目使用独立的测试文件，位于 `src/test/` 目录：
 
 ```bash
 npm run test:tmux      # 测试 tmux 控制模块
@@ -34,7 +34,7 @@ npm run test:adapter   # 测试本地适配器
 npm run typecheck      # 类型检查
 ```
 
-**测试文件位置**：`test/*.test.ts`
+**测试文件位置**：`src/test/*.test.ts`
 
 ### 生产部署
 ```bash
@@ -242,7 +242,7 @@ src/
     ├── adapter.ts            # 适配器接口
     ├── feishu_adapter.ts     # 飞书适配器
     └── local_adapter.ts      # 本地适配器（CLI）
-test/
+src/test/
 ├── test_utils.ts             # 测试工具函数
 ├── state_manager.test.ts     # 状态机模块测试
 ├── process_lock.test.ts      # 进程锁模块测试
@@ -251,7 +251,8 @@ test/
 ├── command_router.test.ts    # 指令路由模块测试
 ├── core_processor.test.ts    # 核心处理器测试
 ├── feishu_adapter.test.ts    # 飞书适配器测试
-└── feishu_bot.test.ts        # 飞书通信模块测试
+├── feishu_bot.test.ts        # 飞书通信模块测试
+└── state_persistence.test.ts # 状态持久化测试
 ```
 
 ## 环境变量

@@ -2,13 +2,13 @@
  * Remote IM Controller - CoreProcessor 模块测试
  */
 
-import { createCoreProcessor } from '../src/core_processor.js';
+import { createCoreProcessor } from '../core_processor.js';
 import { createTestConfig } from './test_utils.js';
-import type { StateManager } from '../src/state_manager.js';
-import type { CommandRouter } from '../src/command_router.js';
-import type { TmuxManager } from '../src/tmux_manager.js';
-import type { ChatState } from '../src/types.js';
-import type { StreamingOptions } from '../src/session_output_manager.js';
+import type { StateManager } from '../state_manager.js';
+import type { CommandRouter } from '../command_router.js';
+import type { TmuxManager } from '../tmux_manager.js';
+import type { ChatState } from '../types.js';
+import type { StreamingOptions } from '../session_output_manager.js';
 
 async function main() {
   console.log('=== CoreProcessor 测试 ===\n');
@@ -64,6 +64,8 @@ async function main() {
     isBusy(userId: string) {
       return this.getState(userId).isBusy;
     },
+    loadStates: () => {},
+    getAllStatesData: () => ({}),
   };
 
   const sentMessages: SentMessage[] = [];
@@ -91,6 +93,8 @@ async function main() {
     async sessionExists(name: string) { return name === 'test-session'; },
     async getPaneCommand() { return 'zsh'; },
     getPipeLogPath() { return undefined; },
+    async recoverSessions() { return []; },
+    getActivePipes() { return {}; },
     getOutputManager() { 
       return {
         initOffset: () => {},
@@ -107,6 +111,8 @@ async function main() {
         },
         stopStreaming: () => {},
         isStreaming: () => false,
+        loadSessionStates: () => {},
+        getAllSessionStatesData: () => ({}),
       };
     },
   };

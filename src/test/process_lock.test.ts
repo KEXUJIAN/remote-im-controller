@@ -6,7 +6,7 @@ import {
   acquireLock,
   releaseLock,
   isProcessRunning,
-} from '../src/utils/process_lock.js';
+} from '../utils/process_lock.js';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
