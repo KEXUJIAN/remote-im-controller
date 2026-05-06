@@ -119,10 +119,11 @@ async function main(): Promise<void> {
           continue;
         }
 
-        // 读取积压输出并推送
+        // 读取积压输出并推送（从持久化的 offset 开始，而非文件开头）
         const logPath = tmuxManager.getPipeLogPath(sessionName);
-        if (logPath) {
-          const result = outputManager.readNewOutput(sessionName, 0);
+        const sessionOffset = persistedState.sessionStates[sessionName]?.offset ?? 0;
+        if (logPath && sessionOffset !== undefined) {
+          const result = outputManager.readNewOutput(sessionName, sessionOffset);
           if (result.content) {
             await feishuBot.sendToUser(
               chatId,
