@@ -16,6 +16,7 @@
     "test:lock": "tsx src/test/process_lock.test.ts",
     "test:router": "tsx src/test/command_router.test.ts",
     "test:adapter": "tsx src/test/local_adapter.test.ts",
+    "prelocal": "npm run build",
     "local": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "bi": "node scripts/install-bot.cjs",

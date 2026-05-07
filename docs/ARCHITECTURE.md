@@ -339,9 +339,6 @@ POLL_STABLE_COUNT=2            # 稳定计数（连续 N 次相同）
 # 会话超时配置
 SESSION_TIMEOUT_MS=600000      # 会话超时时间 (ms)，默认 10 分钟
 
-# tmux pipe-pane 日志目录
-STREAM_LOG_DIR=./logs/stream/  # tmux 输出日志目录
-
 # 重连配置
 RECONNECT_MAX_RETRIES=5        # 最大重连次数
 RECONNECT_DELAY=5000           # 重连延迟 (ms)

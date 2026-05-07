@@ -30,13 +30,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // 注册退出处理器释放锁
-  process.on('beforeExit', () => releaseLock(lockFile));
-  process.on('SIGINT', () => {
-    releaseLock(lockFile);
-    process.exit(0);
-  });
-
   console.log('========================================');
   console.log('  Remote IM Controller - Local CLI');
   console.log("  Type 'help' for commands");
@@ -78,6 +71,32 @@ async function main(): Promise<void> {
   );
   timeoutChecker.start();
 
+  // 优雅退出处理
+  let isShuttingDown = false;
+
+  const gracefulShutdown = (signal: string): void => {
+    if (isShuttingDown) return;
+
+    isShuttingDown = true;
+    logger.info('shutdown', `收到信号: ${signal}，开始优雅退出`);
+
+    timeoutChecker.stop();
+    releaseLock(lockFile);
+
+    adapter.stop()
+      .then(() => {
+        logger.info('shutdown', '优雅退出完成');
+        process.exit(0);
+      })
+      .catch((error) => {
+        logger.error('shutdown', '退出时出错', error);
+        process.exit(1);
+      });
+  };
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
   logger.info('main', '启动本地适配器...');
   await adapter.start(processor);
 
@@ -86,5 +105,6 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   logger.error('main', '启动失败', error);
+  releaseLock(lockFile);
   process.exit(1);
 });

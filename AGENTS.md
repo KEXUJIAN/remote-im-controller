@@ -274,7 +274,6 @@ src/test/
 | `RECONNECT_MAX_RETRIES` | 否 | `5` | 最大重连次数 |
 | `RECONNECT_DELAY` | 否 | `5000` | 重连延迟 (ms) |
 | `SESSION_TIMEOUT_MS` | 否 | `600000` | 会话超时时间 (ms) |
-| `STREAM_LOG_DIR` | 否 | `./logs/stream/` | tmux pipe-pane 日志目录 |
 | `STREAM_PUSH_INTERVAL_MS` | 否 | `2000` | 流式推送间隔 (ms) |
 | `STREAM_PUSH_MIN_INTERVAL_MS` | 否 | `500` | 流式推送最小间隔 (ms) |
 | `CARD_TEMPLATE_ID` | 否 | `-` | 卡片模板 ID（可选） |

@@ -58,12 +58,12 @@ export function loadConfig(requireFeishu: boolean = true): Config {
     logDir: process.env.LOG_DIR || './logs',
     sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS || '600000', 10),
     ...(process.env.CARD_TEMPLATE_ID ? { cardTemplateId: process.env.CARD_TEMPLATE_ID } : {}),
-    streamLogDir: process.env.STREAM_LOG_DIR || `./logs/stream-${instanceId}/`,
+    streamLogDir: `./logs/stream-${instanceId}/`,
     streamPushIntervalMs: parseInt(process.env.STREAM_PUSH_INTERVAL_MS || '2000', 10),
     streamPushMinIntervalMs: parseInt(process.env.STREAM_PUSH_MIN_INTERVAL_MS || '500', 10),
     instanceId,
-    stateFile: process.env.STATE_FILE || `./logs/state-${instanceId}.json`,
-    lockFile: process.env.LOCK_FILE || `./logs/remote-im-controller-${instanceId}.pid`,
+    stateFile: `./logs/state-${instanceId}.json`,
+    lockFile: `./logs/remote-im-controller-${instanceId}.pid`,
   };
 
   if (requireFeishu) {
