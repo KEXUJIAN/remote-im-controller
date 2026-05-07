@@ -92,7 +92,8 @@ export function createLocalAdapter(): Adapter {
       });
 
       rl.on('close', () => {
-        process.exit(0);
+        rl = null;
+        processor = null;
       });
     },
 
