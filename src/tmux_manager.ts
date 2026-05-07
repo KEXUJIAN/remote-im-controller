@@ -27,15 +27,10 @@ export interface TmuxManager {
   getPaneCommand(name: string): Promise<string>;
   getPipeLogPath(name: string): string | undefined;
   getOutputManager(): SessionOutputManager;
-  /** 恢复 pipe-pane 会话 */
   recoverSessions(sessionData: Record<string, { logPath: string }>): Promise<string[]>;
-  /** 获取当前活跃的 pipe 映射 */
   getActivePipes(): Record<string, string>;
 }
 
-/**
- * 确保会话存在，不存在则抛出 SessionNotFoundError
- */
 export async function ensureSessionExists(
   tmuxManager: TmuxManager,
   sessionName: string
@@ -47,17 +42,30 @@ export async function ensureSessionExists(
   }
 }
 
+function toInternalName(sessionName: string, instanceId: string): string {
+  return `${instanceId}-${sessionName}`;
+}
+
+function toExternalName(internalName: string, instanceId: string): string {
+  const prefix = `${instanceId}-`;
+  return internalName.startsWith(prefix) ? internalName.slice(prefix.length) : internalName;
+}
+
 export function createTmuxManager(
   defaultLines: number,
   debug: boolean = false,
-  streamLogDir: string = './logs/stream/'
+  streamLogDir: string = './logs/stream/',
+  instanceId: string = 'cli'
 ): TmuxManager {
   const debugArgs = debug ? ['-v', '-v'] : [];
   const tmuxTmpDir = process.env.TMUX_TMPDIR || process.env.LOG_DIR || './logs';
   const activePipes = new Map<string, string>();
   
   const outputManager = createSessionOutputManager({
-    getLogPath: (sessionName: string) => activePipes.get(sessionName),
+    getLogPath: (externalName: string) => {
+      const internalName = toInternalName(externalName, instanceId);
+      return activePipes.get(internalName);
+    },
   });
 
   function buildTmuxArgs(args: string[]): string[] {
@@ -110,43 +118,43 @@ export function createTmuxManager(
     });
   }
 
-  async function setupPipePane(session: string): Promise<void> {
-    logger.debug('setupPipePane', `设置 pipe-pane: ${session}`);
+  async function setupPipePane(internalName: string): Promise<void> {
+    logger.debug('setupPipePane', `设置 pipe-pane: ${internalName}`);
     
-    await execTmux(['pipe-pane', '-t', session]);
+    await execTmux(['pipe-pane', '-t', internalName]);
     
     const absoluteStreamLogDir = resolve(streamLogDir);
     await mkdir(absoluteStreamLogDir, { recursive: true });
     
-    const logFilePath = `${absoluteStreamLogDir}/${session}.log`;
+    const logFilePath = `${absoluteStreamLogDir}/${internalName}.log`;
     await writeFile(logFilePath, '');
     
-    await execTmux(['pipe-pane', '-o', '-t', session, `exec cat >> '${logFilePath}'`]);
+    await execTmux(['pipe-pane', '-o', '-t', internalName, `exec cat >> '${logFilePath}'`]);
     
     await new Promise((r) => setTimeout(r, 50));
     
-    activePipes.set(session, logFilePath);
-    logger.info('setupPipePane', `pipe-pane 已启动: ${session}`, { logFilePath });
+    activePipes.set(internalName, logFilePath);
+    logger.info('setupPipePane', `pipe-pane 已启动: ${internalName}`, { logFilePath });
   }
 
-  async function teardownPipePane(session: string): Promise<void> {
-    logger.debug('teardownPipePane', `停止 pipe-pane: ${session}`);
+  async function teardownPipePane(internalName: string): Promise<void> {
+    logger.debug('teardownPipePane', `停止 pipe-pane: ${internalName}`);
     
-    const logFilePath = activePipes.get(session);
+    const logFilePath = activePipes.get(internalName);
     
-    await execTmux(['pipe-pane', '-t', session]).catch((err) => {
+    await execTmux(['pipe-pane', '-t', internalName]).catch((err) => {
       const errMsg = toErrorMessage(err);
       logger.debug('teardownPipePane', `停止 pipe-pane 时出错（可能已停止）: ${errMsg}`);
     });
     
-    activePipes.delete(session);
+    activePipes.delete(internalName);
     
     if (logFilePath) {
       await unlink(logFilePath).catch((err) => {
         const errMsg = toErrorMessage(err);
         logger.debug('teardownPipePane', `删除日志文件时出错（可能已删除）: ${errMsg}`);
       });
-      logger.info('teardownPipePane', `pipe-pane 已停止: ${session}`, { logFilePath });
+      logger.info('teardownPipePane', `pipe-pane 已停止: ${internalName}`, { logFilePath });
     }
   }
 
@@ -164,24 +172,22 @@ export function createTmuxManager(
     },
 
     async createSession(name: string): Promise<void> {
-      logger.info('createSession', `创建 tmux 会话: ${name}`);
+      const internalName = toInternalName(name, instanceId);
+      logger.info('createSession', `创建 tmux 会话: ${name} (内部: ${internalName})`);
       try {
-        await execTmux(['new-session', '-d', '-s', name]);
-        await setupPipePane(name);
+        await execTmux(['new-session', '-d', '-s', internalName]);
+        await setupPipePane(internalName);
         
-        // 注入 PS1 边界标记
         const shell = process.env.SHELL || '/bin/zsh';
 
         if (shell.includes('bash')) {
-          // bash: 使用 ANSI-C quoting，\e 是 ESC，\a 是 BEL
           const ps1Command = `export PS1=$'\\e]99;CMD_END\\a$ '`;
-          await execTmux(['send-keys', '-t', name, ps1Command, 'C-m']);
+          await execTmux(['send-keys', '-t', internalName, ps1Command, 'C-m']);
           logger.debug('createSession', `注入 PS1 标记 (bash)`, { shell, ps1Command });
         } else {
-          // zsh: 先禁用干扰功能，再设置 PS1
-          await execTmux(['send-keys', '-t', name, 'unset zle_bracket_paste', 'C-m']);
+          await execTmux(['send-keys', '-t', internalName, 'unset zle_bracket_paste', 'C-m']);
           const ps1Command = `export PS1=$'%{%f%b%k%}\\e]99;CMD_END\\a%# '`;
-          await execTmux(['send-keys', '-t', name, ps1Command, 'C-m']);
+          await execTmux(['send-keys', '-t', internalName, ps1Command, 'C-m']);
           logger.debug('createSession', `注入 PS1 标记 (zsh)`, { shell, ps1Command });
         }
         
@@ -194,11 +200,12 @@ export function createTmuxManager(
     },
 
     async killSession(name: string): Promise<void> {
-      logger.info('killSession', `终止 tmux 会话: ${name}`);
+      const internalName = toInternalName(name, instanceId);
+      logger.info('killSession', `终止 tmux 会话: ${name} (内部: ${internalName})`);
       try {
-        await teardownPipePane(name);
+        await teardownPipePane(internalName);
         outputManager.clearOffset(name);
-        await execTmux(['kill-session', '-t', name]);
+        await execTmux(['kill-session', '-t', internalName]);
         logger.info('killSession', `会话已终止: ${name}`);
       } catch (err) {
         logger.error('killSession', `终止会话失败: ${name}`, err);
@@ -210,9 +217,18 @@ export function createTmuxManager(
       logger.debug('listSessions', '列出所有 tmux 会话');
       try {
         const output = await execTmux(['list-sessions', '-F', '#{session_name}']);
-        const sessions = output.trim().split('\n').filter((line) => line.length > 0);
-        logger.debug('listSessions', `找到 ${sessions.length} 个会话`, { sessions });
-        return sessions;
+        const allSessions = output.trim().split('\n').filter((line) => line.length > 0);
+        
+        const prefix = `${instanceId}-`;
+        const mySessions = allSessions
+          .filter(s => s.startsWith(prefix))
+          .map(s => toExternalName(s, instanceId));
+        
+        logger.debug('listSessions', `找到 ${mySessions.length} 个本实例会话`, { 
+          allSessions, 
+          mySessions 
+        });
+        return mySessions;
       } catch (err) {
         const errMsg = toErrorMessage(err);
         if (errMsg.includes('no sessions') || errMsg.includes('error connecting to') || errMsg.includes('no server running')) {
@@ -225,9 +241,10 @@ export function createTmuxManager(
     },
 
     async sendCommand(name: string, cmd: string): Promise<void> {
+      const internalName = toInternalName(name, instanceId);
       logger.info('sendCommand', `向会话 ${name} 发送命令`, { command: cmd });
       try {
-        await execTmux(['send-keys', '-t', name, cmd, 'C-m']);
+        await execTmux(['send-keys', '-t', internalName, cmd, 'C-m']);
         logger.debug('sendCommand', `命令已发送: ${cmd}`);
       } catch (err) {
         logger.error('sendCommand', `发送命令失败: ${cmd}`, err, { session: name });
@@ -236,10 +253,11 @@ export function createTmuxManager(
     },
 
     async captureScreen(name: string, lines?: number): Promise<TmuxCaptureResult> {
+      const internalName = toInternalName(name, instanceId);
       const lineCount = lines ?? defaultLines;
       logger.debug('captureScreen', `抓取会话 ${name} 的屏幕输出`, { lines: lineCount });
       try {
-        const raw = await execTmux(['capture-pane', '-p', '-t', name, '-S', `-${lineCount}`]);
+        const raw = await execTmux(['capture-pane', '-p', '-t', internalName, '-S', `-${lineCount}`]);
         const cleaned = stripAnsi(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const hash = createHash('md5').update(cleaned).digest('hex');
         const result: TmuxCaptureResult = { raw, cleaned, lines: cleaned.split('\n').length, hash };
@@ -252,7 +270,8 @@ export function createTmuxManager(
     },
 
     async sessionExists(name: string): Promise<boolean> {
-      logger.debug('sessionExists', `检查会话是否存在: ${name}`);
+      const internalName = toInternalName(name, instanceId);
+      logger.debug('sessionExists', `检查会话是否存在: ${name} (内部: ${internalName})`);
       const sessions = await this.listSessions();
       const exists = sessions.includes(name);
       logger.debug('sessionExists', `会话 ${name} ${exists ? '存在' : '不存在'}`);
@@ -260,22 +279,22 @@ export function createTmuxManager(
     },
 
     async getPaneCommand(name: string): Promise<string> {
+      const internalName = toInternalName(name, instanceId);
       logger.debug('getPaneCommand', `获取会话当前命令: ${name}`);
       try {
-        const output = await execTmux(['list-panes', '-t', name, '-F', '#{pane_current_command}']);
+        const output = await execTmux(['list-panes', '-t', internalName, '-F', '#{pane_current_command}']);
         const command = output.trim();
         logger.debug('getPaneCommand', `会话 ${name} 当前命令: ${command}`);
         return command;
       } catch {
-        // getPaneCommand 在会话不存在时会失败
-        // 返回空字符串表示无命令，调用方应处理这种情况
         logger.debug('getPaneCommand', `获取会话命令失败，会话可能不存在: ${name}`);
         return '';
       }
     },
 
     getPipeLogPath(name: string): string | undefined {
-      return activePipes.get(name);
+      const internalName = toInternalName(name, instanceId);
+      return activePipes.get(internalName);
     },
 
     getOutputManager(): SessionOutputManager {
@@ -284,25 +303,25 @@ export function createTmuxManager(
 
     async recoverSessions(sessionData: Record<string, { logPath: string }>): Promise<string[]> {
       const recovered: string[] = [];
-      const existingSessions = await this.listSessions();
+      const output = await execTmux(['list-sessions', '-F', '#{session_name}']).catch(() => '');
+      const existingSessions = output.trim().split('\n').filter((line) => line.length > 0);
 
-      for (const [sessionName, data] of Object.entries(sessionData)) {
-        // 检查会话是否还存在
-        if (!existingSessions.includes(sessionName)) {
-          logger.info('recoverSessions', `会话已不存在: ${sessionName}`);
+      for (const [externalName, data] of Object.entries(sessionData)) {
+        const internalName = toInternalName(externalName, instanceId);
+        
+        if (!existingSessions.includes(internalName)) {
+          logger.info('recoverSessions', `会话已不存在: ${externalName}`);
           continue;
         }
 
-        // 检查日志文件是否存在
         if (!existsSync(data.logPath)) {
           logger.warn('recoverSessions', `日志文件不存在: ${data.logPath}`);
-          // 尝试重新设置 pipe-pane
         }
 
-        // 恢复 activePipes 映射
-        activePipes.set(sessionName, data.logPath);
-        recovered.push(sessionName);
-        logger.info('recoverSessions', `会话恢复: ${sessionName}`, { logPath: data.logPath });
+        activePipes.set(internalName, data.logPath);
+        outputManager.initOffset(externalName);
+        recovered.push(externalName);
+        logger.info('recoverSessions', `会话恢复: ${externalName}`, { logPath: data.logPath });
       }
 
       return recovered;
@@ -310,8 +329,9 @@ export function createTmuxManager(
 
     getActivePipes(): Record<string, string> {
       const result: Record<string, string> = {};
-      for (const [session, path] of activePipes.entries()) {
-        result[session] = path;
+      for (const [internalName, path] of activePipes.entries()) {
+        const externalName = toExternalName(internalName, instanceId);
+        result[externalName] = path;
       }
       return result;
     },

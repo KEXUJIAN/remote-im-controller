@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir);
+  const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir, config.instanceId);
   const commandRouter = createCommandRouter({ tmuxManager });
   const feishuBot = createFeishuBot(config);
 
