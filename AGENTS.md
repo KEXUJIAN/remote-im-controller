@@ -2,7 +2,12 @@
 
 ## 项目概述
 
-通过飞书 WebSocket 长连接远程控制 WSL 终端的 Node.js 守护进程。支持 COMMAND/SESSION 双模式，飞书卡片交互，本地 CLI 测试。
+通过飞书 WebSocket 长连接远程控制 WSL 终端的 Node.js 实守进程。支持 COMMAND/SESSION 双模式，飞书卡片交互，本地 CLI 测试。
+
+**架构特点**：
+- 单进程架构（PM2 fork 模式），状态存储在内存中
+- instanceId 前缀实现多实例隔离：CLI/dev/prod 模式可同时运行，互不干扰
+- 用户输入会话名 `op` → 内部名 `cli-op` / `dev-op` / `prod-op`
 
 ## 构建与测试命令
 
@@ -15,7 +20,6 @@ npm run typecheck      # 仅类型检查，不生成文件
 ### 开发
 ```bash
 npm run dev            # 开发模式（tsx watch 热重载）
-npm run start          # 运行编译后的代码
 npm run local          # 本地 CLI 测试入口
 ```
 
@@ -37,10 +41,22 @@ npm run typecheck      # 类型检查
 **测试文件位置**：`src/test/*.test.ts`
 
 ### 生产部署
+
 ```bash
-pm2 start ecosystem.config.cjs    # 使用 PM2 启动
-pm2 logs remote-im-controller     # 查看日志
+# 交互式菜单
+npm run pm2
+
+# 非交互式命令
+npm run pm2 start       # 生产环境启动
+npm run pm2 start --dev # 开发环境启动（LOG_LEVEL=debug）
+npm run pm2 stop        # 停止
+npm run pm2 restart     # 重启
+npm run pm2 logs        # 查看日志
+npm run pm2 status      # 查看状态
+npm run pm2 delete      # 删除进程
 ```
+
+**注意**：项目使用 `fork` 模式（单进程架构，状态存储在内存中），不适合 cluster 多进程。
 
 ## 日志系统
 
@@ -50,12 +66,11 @@ pm2 logs remote-im-controller     # 查看日志
 |----------|--------|------|
 | `npm run local` (CLI) | ❌ 干净 | ✅ `./logs/cli.log` |
 | `npm run dev` (开发) | ✅ 显示 | ✅ `./logs/dev.log` |
-| `npm run start` / PM2 | ✅ PM2 管理 | ✅ PM2 管理 |
 
 ### 启用开发模式文件日志
 
 ```bash
-NODE_ENV=development npm run start
+NODE_ENV=development npm run dev
 ```
 
 ## 代码风格规范

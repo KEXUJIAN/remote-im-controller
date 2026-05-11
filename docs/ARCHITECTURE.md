@@ -298,7 +298,7 @@ Session 输出管理模块 (`session_output_manager.ts`) 负责追踪 tmux 会�
 |------|--------|------|
 | `npm run local` (CLI) | ❌ 干净 | ✅ `./logs/cli.log` |
 | `npm run dev` (开发) | ✅ 显示 | ✅ `./logs/dev.log` |
-| `npm run start` / PM2 | ✅ PM2 管理 | ✅ PM2 管理 |
+| `npm run pm2` (生产) | ✅ PM2 管理 | ✅ PM2 管理 |
 
 ---
 
@@ -440,9 +440,5 @@ npm run local
 npm run dev
 
 # 生产模式
-npm run build
-npm run start
-
-# PM2 部署
-pm2 start ecosystem.config.cjs
+npm run pm2 start
 ```

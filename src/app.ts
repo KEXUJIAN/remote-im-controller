@@ -221,6 +221,7 @@ async function main(): Promise<void> {
   await adapter.start(coreProcessor);
 
   logger.info('main', 'Remote IM Controller 已启动，等待消息...');
+  process.send?.('ready');
 }
 
 main().catch((error) => {

@@ -72,11 +72,7 @@ npm run dev
 
 **生产模式**：
 ```bash
-# 构建
-npm run build
-
-# 使用 PM2 启动
-pm2 start ecosystem.config.cjs
+npm run pm2 start
 ```
 
 ### 5. 测试连接
