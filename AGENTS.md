@@ -73,6 +73,35 @@ npm run pm2 delete      # 删除进程
 NODE_ENV=development npm run dev
 ```
 
+## 测试编写规范
+
+项目使用裸 tsx 脚本做测试，位于 `src/test/`。测试文件通过 `npm run test:<name>` 运行。
+
+### 运行测试
+```bash
+npm run test:state       # 状态机模块
+npm run test:lock        # 进程锁模块
+npm run test:tmux        # tmux 控制模块
+npm run test:router      # 指令路由模块
+npm run test:core        # 核心处理器
+npm run test:output      # 会话输出管理
+npm run test:marker      # PS1 标记检测
+npm run test:feishu      # 飞书通信模块
+npm run test:adapter     # 本地适配器
+```
+
+### 编写新测试
+1. 创建 `src/test/<模块名>.test.ts`，遵循已有文件结构
+2. 文件结构：文件头注释 → import → 测试函数 → `async function main()` → `main().catch(console.error)`
+3. 断言方式：`if (!condition) { console.log('✗ 失败'); process.exit(1); }`
+4. 在 `package.json` 添加对应的 `test:<name>` 脚本
+
+### 注意事项
+- 测试顺序执行，不依赖测试框架（无 jest/vitest）
+- 每个测试自行管理状态（创建/清理），避免测试间耦合
+- 部分测试依赖 tmux 环境（`test:tmux`、`test:router`）
+- 测试输出通过 `console.log`，成功以 `✓` 标记，失败以 `✗` 标记
+
 ## 代码风格规范
 
 ### TypeScript 配置

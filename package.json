@@ -12,6 +12,7 @@
     "test:state": "tsx src/test/state_manager.test.ts",
     "test:core": "tsx src/test/core_processor.test.ts",
     "test:output": "tsx src/test/session_output_manager.test.ts",
+    "test:marker": "tsx src/test/marker_detector.test.ts",
     "test:lock": "tsx src/test/process_lock.test.ts",
     "test:router": "tsx src/test/command_router.test.ts",
     "test:adapter": "tsx src/test/local_adapter.test.ts",
