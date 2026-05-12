@@ -7,7 +7,6 @@ import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { createLogger } from './logger.js';
 import { toError } from './utils/misc.js';
-import { cleanTerminalOutput } from './utils/terminal_cleaner.js';
 import type {
   UnifiedMessage,
   CardEventPayload,
@@ -21,6 +20,7 @@ import type { TmuxManager } from './tmux_manager.js';
 import type { CoreProcessor } from './adapters/adapter.js';
 import { parseCommand } from './command_parser.js';
 import { createMarkerDetector } from './marker_detector.js';
+import { createStreamingSession } from './streaming_session.js';
 
 const logger = createLogger('core_processor');
 
@@ -174,89 +174,14 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         logger.info('handleTextMessage', `SESSION 模式透传`, { chatId, sessionName, commandToSend });
         await tmuxManager.sendCommand(sessionName, commandToSend);
 
-        let accumulatedOutput = '';
-        let messageId: string | null = null;
-        let lastUpdateTime = Date.now();
-        const UPDATE_INTERVAL_MS = 5000;
-        const UPDATE_SIZE_THRESHOLD = 1024;
-        const MAX_OUTPUT_SIZE = 8 * 1024;
-
-        const streamComplete = new Promise<void>((resolve) => {
-          outputManager.startStreaming(sessionName, {
-            intervalMs: config.streamPushIntervalMs,
-            onChunk: async (chunk) => {
-              accumulatedOutput += chunk;
-              const now = Date.now();
-              const timeSinceLastUpdate = now - lastUpdateTime;
-              const outputSize = accumulatedOutput.length;
-
-              if (outputSize > 0 && (timeSinceLastUpdate >= UPDATE_INTERVAL_MS || outputSize >= UPDATE_SIZE_THRESHOLD)) {
-                let outputToSend = accumulatedOutput;
-                if (outputToSend.length > MAX_OUTPUT_SIZE) {
-                  outputToSend = outputToSend.slice(-MAX_OUTPUT_SIZE);
-                  logger.warn('handleTextMessage', '输出超过 8KB，已截断', { originalSize: outputSize });
-                }
-
-                const cleanedOutput = cleanTerminalOutput(outputToSend);
-
-                if (messageId) {
-                  try {
-                    await updateMessage(chatId, messageId, `\`\`\`\n${cleanedOutput}\n\`\`\``);
-                  } catch (error) {
-                    logger.warn('handleTextMessage', '消息更新失败（可能触发频控）', { error: toError(error).message });
-                  }
-                } else {
-                  messageId = await sendMessage(chatId, `\`\`\`\n${cleanedOutput}\n\`\`\``);
-                }
-                lastUpdateTime = now;
-              }
-
-              logger.debug('handleTextMessage', '流式推送 chunk', { chunkLength: chunk.length });
-            },
-            onComplete: () => {
-              stateManager.clearBusy(userId);
-              logger.info('handleTextMessage', '流式推送完成', { sessionName });
-
-              void (async () => {
-                try {
-                  if (accumulatedOutput) {
-                    let finalOutput = accumulatedOutput;
-                    if (finalOutput.length > MAX_OUTPUT_SIZE) {
-                      finalOutput = finalOutput.slice(-MAX_OUTPUT_SIZE);
-                      logger.warn('handleTextMessage', '最终输出超过 8KB，已截断', { originalSize: accumulatedOutput.length });
-                    }
-                    const cleanedOutput = cleanTerminalOutput(finalOutput);
-                    const finalMessage = `\`\`\`\n${cleanedOutput}\n\`\`\`\n\n✅ 命令执行完成`;
-
-                    if (messageId) {
-                      try {
-                        await updateMessage(chatId, messageId, finalMessage);
-                      } catch (error) {
-                        logger.warn('handleTextMessage', '最终消息更新失败', { error: toError(error).message });
-                      }
-                    } else {
-                      await sendMessage(chatId, finalMessage);
-                    }
-                  } else if (messageId) {
-                    try {
-                      await updateMessage(chatId, messageId, '✅ 命令执行完成（无输出）');
-                    } catch (error) {
-                      logger.warn('handleTextMessage', '无输出消息更新失败', { error: toError(error).message });
-                    }
-                  } else {
-                    await sendMessage(chatId, '✅ 命令执行完成（无输出）');
-                  }
-                } finally {
-                  resolve();
-                }
-              })();
-            },
-            markerDetector,
-          });
+        const session = createStreamingSession({
+          chatId,
+          sessionName,
+          sendMessage,
+          updateMessage,
         });
-
-        await streamComplete;
-
+        await session.run(outputManager, markerDetector, config.streamPushIntervalMs);
+        stateManager.clearBusy(userId);
         stateManager.renewActivity(userId);
       } catch (err) {
         stateManager.clearBusy(userId);

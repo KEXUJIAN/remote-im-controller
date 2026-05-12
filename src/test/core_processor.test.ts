@@ -102,12 +102,8 @@ async function main() {
         readNewOutput: () => ({ content: 'test output', markerFound: false, markerPosition: 0 }),
         clearOffset: () => {},
         hasOffset: () => false,
-        startStreaming: (_sessionName: string, options: StreamingOptions) => {
-          options.onChunk('test output').then(() => {
-            setTimeout(() => {
-              options.onComplete?.();
-            }, 10);
-          });
+        startStreaming: async (_sessionName: string, options: StreamingOptions) => {
+          await options.onChunk('test output');
         },
         stopStreaming: () => {},
         isStreaming: () => false,

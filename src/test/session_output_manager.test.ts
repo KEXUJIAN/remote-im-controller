@@ -454,16 +454,12 @@ async function main() {
         reset: () => {},
       };
 
-      let onCompleteCalled = false;
       const chunks: string[] = [];
 
-      manager.startStreaming('test-session', {
+      const streamPromise = manager.startStreaming('test-session', {
         intervalMs: 50,
         onChunk: async (chunk) => {
           chunks.push(chunk);
-        },
-        onComplete: () => {
-          onCompleteCalled = true;
         },
         markerDetector,
       });
@@ -472,31 +468,30 @@ async function main() {
       writeFileSync(testLogFile, '正常内容\n', { encoding: 'utf8', flag: 'a' });
 
       // 等待第一次触发
-      setTimeout(() => {
+      setTimeout(async () => {
         // 写入包含标记的内容
         writeFileSync(testLogFile, '完成前内容<<COMPLETE>>忽略内容\n', { encoding: 'utf8', flag: 'a' });
 
-        // 等待检测
-        setTimeout(() => {
-          console.log(`  onComplete 被调用: ${onCompleteCalled}`);
-          console.log(`  收到的 chunks: ${JSON.stringify(chunks)}`);
-          console.log(`  流式推送状态: ${manager.isStreaming('test-session')}`);
+        // 等待流式推送完成（标记检测触发 resolve）
+        await streamPromise;
 
-          // 验证：应该检测到标记并停止
-          if (onCompleteCalled && !manager.isStreaming('test-session')) {
-            const allContent = chunks.join('');
-            if (allContent.includes('正常内容') && allContent.includes('完成前内容')) {
-              console.log('  ✓ 通过：标记检测正确触发完成');
-              resolve(true);
-            } else {
-              console.log('  ✗ 失败：未正确推送标记前的内容');
-              resolve(false);
-            }
+        console.log(`  收到的 chunks: ${JSON.stringify(chunks)}`);
+        console.log(`  流式推送状态: ${manager.isStreaming('test-session')}`);
+
+        // 验证：应该检测到标记并停止
+        if (!manager.isStreaming('test-session')) {
+          const allContent = chunks.join('');
+          if (allContent.includes('正常内容') && allContent.includes('完成前内容')) {
+            console.log('  ✓ 通过：标记检测正确触发完成');
+            resolve(true);
           } else {
-            console.log('  ✗ 失败：标记检测未正确工作');
+            console.log('  ✗ 失败：未正确推送标记前的内容');
             resolve(false);
           }
-        }, 150);
+        } else {
+          console.log('  ✗ 失败：标记检测未正确工作');
+          resolve(false);
+        }
       }, 100);
     });
   }
