@@ -20,8 +20,6 @@ export interface StreamingOptions {
   intervalMs: number;
   /** 每次读取到新内容时的回调 */
   onChunk: (chunk: string) => Promise<void>;
-  /** 完成时的回调 */
-  onComplete?: () => void;
   /** 标记检测器（可选，用于检测命令完成） */
   markerDetector?: MarkerDetector;
 }
@@ -56,7 +54,7 @@ export interface SessionOutputManager {
   hasOffset(sessionName: string): boolean;
   
   /** 开始流式推送 */
-  startStreaming(sessionName: string, options: StreamingOptions): void;
+  startStreaming(sessionName: string, options: StreamingOptions): Promise<void>;
   
   /** 停止流式推送 */
   stopStreaming(sessionName: string): void;
@@ -329,8 +327,9 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
   /**
    * 开始流式推送
    */
-  function startStreaming(sessionName: string, options: StreamingOptions): void {
-    const { intervalMs, onChunk, onComplete, markerDetector } = options;
+  function startStreaming(sessionName: string, options: StreamingOptions): Promise<void> {
+    const { intervalMs, onChunk, markerDetector } = options;
+    return new Promise<void>((resolve) => {
     
     // 如果已经在流式推送，先停止
     if (streamingTimers.has(sessionName)) {
@@ -354,6 +353,7 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
         if (currentOffset === undefined) {
           logger.warn('startStreaming', '流式 offset 不存在', { sessionName });
           stopStreaming(sessionName);
+          resolve();
           return;
         }
         
@@ -378,7 +378,7 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
             
             // 停止流式推送
             stopStreaming(sessionName);
-            onComplete?.();
+            resolve();
             return;
           }
           
@@ -391,6 +391,7 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     }, intervalMs);
     
     streamingTimers.set(sessionName, timer);
+    });
   }
   
   /**
