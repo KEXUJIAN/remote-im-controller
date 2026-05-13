@@ -34,6 +34,8 @@ npm run test:state     # 测试状态机模块
 npm run test:core      # 测试核心处理器
 npm run test:lock      # 测试进程锁模块
 npm run test:router    # 测试指令路由模块
+npm run test:output    # 测试会话输出管理
+npm run test:marker    # 测试 PS1 标记检测
 npm run test:adapter   # 测试本地适配器
 npm run typecheck      # 类型检查
 ```
@@ -276,6 +278,7 @@ src/
 ├── command_router.ts         # 指令路由模块
 ├── feishu_bot.ts             # 飞书通信模块
 ├── session_output_manager.ts # Session 输出管理模块（offset 追踪）
+├── streaming_session.ts      # 流式推送会话模块（分块推送 + 消息更新）
 ├── marker_detector.ts        # PS1 边界标记检测模块
 ├── utils/
 │   ├── misc.ts                 # 杂项工具（错误处理、脱敏、日志目录）
@@ -296,6 +299,8 @@ src/test/
 ├── core_processor.test.ts    # 核心处理器测试
 ├── feishu_adapter.test.ts    # 飞书适配器测试
 ├── feishu_bot.test.ts        # 飞书通信模块测试
+├── session_output_manager.test.ts # 会话输出管理测试
+├── marker_detector.test.ts   # PS1 标记检测测试
 └── state_persistence.test.ts # 状态持久化测试
 ```
 
@@ -351,9 +356,10 @@ src/test/
 SESSION 模式下命令发送后，使用流式推送机制获取输出：
 
 1. **PS1 边界标记**：会话创建时注入 OSC 标记 `\x1b]99;CMD_END\x07`
-2. **流式推送**：定时读取 pipe-pane 日志增量输出
-3. **完成检测**：检测到 PS1 标记时认为命令完成
-4. **忙碌状态**：命令执行期间锁定，拒绝新命令
+2. **流式推送**：`startStreaming()` 返回 `Promise<void>`，定时读取 pipe-pane 日志增量输出
+3. **完成检测**：检测到 PS1 标记时 resolve Promise，命令完成
+4. **消息更新**：`streaming_session.ts` 封装分块推送逻辑，按时间（5000ms）或大小（1024B）阈值更新飞书消息，单条消息上限 8KB
+5. **忙碌状态**：命令执行期间锁定，拒绝新命令
 
 ### PS1 标记注入
 
@@ -391,6 +397,32 @@ export PS1=$'%{%f%b%k%}\e]99;CMD_END\a%# '
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `STREAM_PUSH_INTERVAL_MS` | 2000 | 流式推送间隔 (ms) |
+| `STREAM_PUSH_MIN_INTERVAL_MS` | 500 | 流式推送最小间隔 (ms) |
+
+### 流式推送两层间隔
+
+注意区分两个不同的时间间隔：
+
+| 常量 | 默认值 | 位置 | 作用 |
+|------|--------|------|------|
+| `config.streamPushIntervalMs` | 2000ms | 环境变量 | `startStreaming` 内部 `setInterval` 的频率 — 读取日志文件的轮询间隔 |
+| `UPDATE_INTERVAL_MS` | 5000ms | `streaming_session.ts` 模块常量 | `handleChunk` 回调内累积输出推送到飞书消息的最小间隔 |
+
+### streaming_session 模块架构
+
+`src/streaming_session.ts` 封装了 SESSION 模式下命令输出到飞书消息的完整流程：
+
+- `createStreamingSession(deps)` — 工厂函数，接收 `{ chatId, sessionName, sendMessage, updateMessage }`
+- `run(outputManager, markerDetector, intervalMs)` — 调用 `startStreaming`（返回 Promise），完成时格式化最终消息
+- 内部私有状态：`accumulatedOutput`、`messageId`、`lastUpdateTime`
+- 模块常量：`UPDATE_INTERVAL_MS`（5000ms 消息更新节流）、`UPDATE_SIZE_THRESHOLD`（1024B 最小推送字节）、`MAX_OUTPUT_SIZE`（8KB 单条消息上限）
+
+调用方只需：
+```typescript
+const session = createStreamingSession({ chatId, sessionName, sendMessage, updateMessage });
+await session.run(outputManager, markerDetector, config.streamPushIntervalMs);
+```
+
 
 ### 忙碌状态
 
