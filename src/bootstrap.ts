@@ -75,9 +75,9 @@ export function createShutdownHandler(deps: ShutdownDeps): (signal: string) => v
 /**
  * 注册系统信号处理函数
  * @param shutdown 关闭处理函数
- * @param includeUncaught 是否注册未捕获异常和未处理 Promise 拒绝（默认 false）
+ * @param includeUncaught 是否注册未捕获异常和未处理 Promise 拒绝（默认 true）
  */
-export function registerSystemHandlers(shutdown: (signal: string) => void, includeUncaught: boolean = false): void {
+export function registerSystemHandlers(shutdown: (signal: string) => void, includeUncaught = true): void {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 

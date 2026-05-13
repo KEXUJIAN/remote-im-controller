@@ -183,7 +183,7 @@ async function main(): Promise<void> {
     },
   });
 
-  registerSystemHandlers(gracefulShutdown, true);
+  registerSystemHandlers(gracefulShutdown);
 
   logger.info('main', '启动飞书适配器...');
   await adapter.start(coreProcessor);
