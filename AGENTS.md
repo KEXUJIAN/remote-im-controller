@@ -1,5 +1,20 @@
 # Remote IM Controller - AI Agent 指南
 
+## 参考文档
+
+本文档是 AI Agent 的**索引入口**。完整的项目信息分布在：
+
+| 文档 | 包含内容 |
+|------|---------|
+| `README.md` | 项目概览、快速开始、指令说明、omo 脚本用法 |
+| `docs/FEISHU_SETUP.md` | 飞书应用配置步骤 |
+| `docs/ARCHITECTURE.md` | 技术架构和模块设计 |
+| `docs/OMO_BOT_ARCH.md` | omo 命令处理逻辑、会话隔离机制 |
+| `.env.example` | 环境变量模板 |
+| `package.json` | 全部 npm 脚本 |
+
+**本文档补充上述文档未覆盖的、AI Agent 特有需要的信息**。
+
 ## 项目概述
 
 通过飞书 WebSocket 长连接远程控制 WSL 终端的 Node.js 实守进程。支持 COMMAND/SESSION 双模式，飞书卡片交互，本地 CLI 测试。
@@ -8,6 +23,7 @@
 - 单进程架构（PM2 fork 模式），状态存储在内存中
 - instanceId 前缀实现多实例隔离：CLI/dev/prod 模式可同时运行，互不干扰
 - 用户输入会话名 `op` → 内部名 `cli-op` / `dev-op` / `prod-op`
+- `src/bootstrap.ts` 提供共享启动逻辑（锁、信号注册、优雅退出），`app.ts` 和 `cli.ts` 各自组装自己的 DI 和适配器
 
 ## 构建与测试命令
 
@@ -25,22 +41,7 @@ npm run local          # 本地 CLI 测试入口
 
 ### 测试
 
-项目使用独立的测试文件，位于 `src/test/` 目录：
-
-```bash
-npm run test:tmux      # 测试 tmux 控制模块
-npm run test:feishu    # 测试飞书通信模块
-npm run test:state     # 测试状态机模块
-npm run test:core      # 测试核心处理器
-npm run test:lock      # 测试进程锁模块
-npm run test:router    # 测试指令路由模块
-npm run test:output    # 测试会话输出管理
-npm run test:marker    # 测试 PS1 标记检测
-npm run test:adapter   # 测试本地适配器
-npm run typecheck      # 类型检查
-```
-
-**测试文件位置**：`src/test/*.test.ts`
+测试文件位于 `src/test/`，通过 `npm run test:<name>` 运行。**全部脚本见 `package.json`**。
 
 ### 生产部署
 
@@ -60,37 +61,9 @@ npm run pm2 delete      # 删除进程
 
 **注意**：项目使用 `fork` 模式（单进程架构，状态存储在内存中），不适合 cluster 多进程。
 
-## 日志系统
-
-### 日志输出策略
-
-| 运行模式 | 控制台 | 文件 |
-|----------|--------|------|
-| `npm run local` (CLI) | ❌ 干净 | ✅ `./logs/cli.log` |
-| `npm run dev` (开发) | ✅ 显示 | ✅ `./logs/dev.log` |
-
-### 启用开发模式文件日志
-
-```bash
-NODE_ENV=development npm run dev
-```
-
 ## 测试编写规范
 
-项目使用裸 tsx 脚本做测试，位于 `src/test/`。测试文件通过 `npm run test:<name>` 运行。
-
-### 运行测试
-```bash
-npm run test:state       # 状态机模块
-npm run test:lock        # 进程锁模块
-npm run test:tmux        # tmux 控制模块
-npm run test:router      # 指令路由模块
-npm run test:core        # 核心处理器
-npm run test:output      # 会话输出管理
-npm run test:marker      # PS1 标记检测
-npm run test:feishu      # 飞书通信模块
-npm run test:adapter     # 本地适配器
-```
+项目使用裸 tsx 脚本做测试，位于 `src/test/`，**无测试框架**（无 jest/vitest）。
 
 ### 编写新测试
 1. 创建 `src/test/<模块名>.test.ts`，遵循已有文件结构
@@ -99,167 +72,45 @@ npm run test:adapter     # 本地适配器
 4. 在 `package.json` 添加对应的 `test:<name>` 脚本
 
 ### 注意事项
-- 测试顺序执行，不依赖测试框架（无 jest/vitest）
-- 每个测试自行管理状态（创建/清理），避免测试间耦合
+- 测试顺序执行，每个测试自行管理状态（创建/清理），避免耦合
 - 部分测试依赖 tmux 环境（`test:tmux`、`test:router`）
-- 测试输出通过 `console.log`，成功以 `✓` 标记，失败以 `✗` 标记
+- 成功以 `✓` 标记，失败以 `✗` 标记
 
 ## 代码风格规范
 
-### TypeScript 配置
-
-项目使用 **strict 模式**，启用以下严格检查：
-- `strict: true`
-- `noUnusedLocals: true`
-- `noUnusedParameters: true`
-- `noImplicitReturns: true`
-- `noFallthroughCasesInSwitch: true`
-- `noUncheckedIndexedAccess: true`
-- `exactOptionalPropertyTypes: true`
-
-**禁止使用**：`as any`、`@ts-ignore`、`@ts-expect-error`
-
-### 模块系统
-
-- **ESM 模块**（`"type": "module"`）
-- 导入必须带 `.js` 扩展名（TypeScript ESM 约定）
+| 维度 | 约定 |
+|------|------|
+| 模块系统 | ESM（`"type": "module"`），导入必须带 `.js` 扩展名 |
+| 架构模式 | 工厂函数 `createXxx` 返回实现接口的对象（非 class） |
+| 文件命名 | `snake_case.ts` |
+| 变量/函数 | `camelCase` |
+| 类型/接口 | `PascalCase` |
+| 类型定义 | 集中在 `src/types.ts`，错误类在 `src/errors.ts` |
+| 注释 | 中文；保留解释"为什么"的注释，删除解释"是什么"的 |
+| 禁止 | `as any`、`@ts-ignore`、`@ts-expect-error`、空 catch 块 |
 
 ```typescript
-// 正确
-import { createLogger } from './logger.js';
-import type { Config } from './types.js';
-
-// 错误
-import { createLogger } from './logger';  // 缺少扩展名
-```
-
-### 命名约定
-
-| 类型 | 命名风格 | 示例 |
-|------|----------|------|
-| 变量/函数 | camelCase | `parseCommand`, `lastSession` |
-| 类型/接口 | PascalCase | `TmuxSession`, `CommandResult` |
-| 常量 | camelCase 或 UPPER_SNAKE_CASE | `LOG_LEVEL_PRIORITY`, `helpText` |
-| 文件 | snake_case.ts | `tmux_manager.ts`, `command_parser.ts` |
-| 私有函数 | 下划线前缀可选 | `_unusedParser` |
-
-### 导入顺序
-
-```typescript
-// 1. Node.js 内置模块
-import { spawn } from 'child_process';
-import { createHash } from 'crypto';
-
-// 2. 第三方模块
-import 'dotenv/config';
-
-// 3. 项目内模块（相对路径）
-import { createLogger } from './logger.js';
-import type { TmuxCaptureResult } from './types.js';
-```
-
-### 架构模式
-
-**工厂函数模式**：模块导出 `createXxx` 函数而非类
-
-```typescript
-// 定义接口
+// 工厂函数模式 — 模块导出 createXxx 函数，返回实现接口的对象
 export interface TmuxManager {
   createSession(name: string): Promise<void>;
-  killSession(name: string): Promise<void>;
-  // ...
 }
-
-// 导出工厂函数
-export function createTmuxManager(defaultLines: number, debug?: boolean): TmuxManager {
-  // 返回实现接口的对象
-  return {
-    async createSession(name: string): Promise<void> { /* ... */ },
-    async killSession(name: string): Promise<void> { /* ... */ },
-  };
+export function createTmuxManager(...): TmuxManager {
+  return { async createSession(name) { /* ... */ } };
 }
 ```
 
-### 类型定义
+TypeScript **strict 模式**，额外启用：`noUnusedLocals`、`noUnusedParameters`、`noImplicitReturns`、`noUncheckedIndexedAccess`。
 
-- 类型集中在 `src/types.ts`
-- 自定义错误类在 `src/errors.ts`
-- 使用 `interface` 定义对象结构
-- 使用 `type` 定义联合类型、工具类型
-- JSDoc 注释使用中文
-
-```typescript
-// src/types.ts
-export interface Config {
-  /** 飞书应用 ID */
-  feishuAppId: string;
-  /** 日志级别 */
-  logLevel: LogLevel;
-}
-
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-```
-
-### 错误处理
-
-**自定义错误类**：继承 `Error`，添加上下文属性，定义在 `src/errors.ts`
-
-```typescript
-// src/errors.ts
-export class SessionNotFoundError extends Error {
-  constructor(
-    public sessionName: string,
-    public availableSessions: string[] = []
-  ) {
-    super(`tmux session '${sessionName}' not found`);
-    this.name = 'SessionNotFoundError';
-  }
-}
-```
-
-**错误转换工具**：使用 `src/utils/misc.ts` 中的工具函数
-
-```typescript
-import { toError, toErrorMessage } from './utils/misc.js';
-
-const error = toError(err);
-const errMsg = toErrorMessage(err);
-```
-
-**禁止空 catch 块**
+### 导入顺序
+1. Node.js 内置模块 → 2. 第三方模块 → 3. 项目内模块（相对路径）
 
 ### 日志规范
-
-使用 `createLogger(moduleName)` 创建日志器：
-
 ```typescript
-const logger = createLogger('command_router');
-
-logger.info('action', '操作描述', { contextKey: 'value' });
-logger.error('action', '错误描述', error, { extraContext: 'value' });
+const logger = createLogger('module_name');
+logger.info('action', '描述', { contextKey: 'value' });
+logger.error('action', '描述', error, { extra: 'value' });
 ```
-
-日志级别：`debug` < `info` < `warn` < `error`
-
-### 注释规范
-
-- 文件头注释：模块用途说明
-- JSDoc 注释：公共 API
-- 行内注释：复杂逻辑说明
-- 语言：中文
-
-```typescript
-/**
- * Remote IM Controller - 指令解析模块
- */
-
-/**
- * 分词函数 - 处理引号包裹的参数
- * @param body 输入字符串
- * @returns 分词后的字符串数组
- */
-export function tokenize(body: string): string[] { /* ... */ }
-```
+级别：`debug` < `info` < `warn` < `error`
 
 ## 文件结构
 
@@ -267,6 +118,7 @@ export function tokenize(body: string): string[] { /* ... */ }
 src/
 ├── app.ts                    # 主入口（飞书模式）
 ├── cli.ts                    # 本地 CLI 入口
+├── bootstrap.ts              # 共享启动基础设施（锁、信号、优雅退出）
 ├── config.ts                 # 配置加载模块
 ├── types.ts                  # 类型定义
 ├── errors.ts                 # 自定义错误类
@@ -430,61 +282,21 @@ await session.run(outputManager, markerDetector, config.streamPushIntervalMs);
 - 新命令会被拒绝，返回 "⏳ 请等待当前命令完成..."
 - 忙碌状态通过 `StateManager.isBusy()` 检查
 
-## 本地 CLI 测试
-
-```bash
-npm run local
-```
-
-### 可用指令
-
-| 指令 | 说明 |
-|------|------|
-| `help` | 显示帮助 |
-| `list` | 列出会话 |
-| `create <name>` | 创建会话 |
-| `kill <name>` | 终止会话 |
-| `<session> <cmd>` | 在会话中执行命令 |
-| `/click enter <session>` | 模拟卡片"进入"按钮 |
-| `/click kill <session>` | 模拟卡片"关闭"按钮 |
-| `/menu exit` | 模拟菜单"退出会话模式" |
-
-### 退出 CLI
-
-`Ctrl+C`
-
 ## 常见任务
 
 ### 添加新指令
-
 1. 在 `types.ts` 添加 `CommandAction` 类型和 `ParsedCommand` 字段
 2. 在 `command_parser.ts` 添加解析逻辑
 3. 在 `command_router.ts` 添加处理函数和路由
 
 ### 添加新模块
-
-1. 创建 `src/new_module.ts`
-2. 定义接口和工厂函数
-3. 导出接口类型供其他模块使用
-4. 如需新类型，在 `src/types.ts` 添加类型定义
-5. 如需新错误类，在 `src/errors.ts` 添加错误定义
-6. 如需工具函数，在 `src/utils/` 下创建
+1. 创建 `src/new_module.ts`，定义接口和工厂函数
+2. 导出接口类型供其他模块使用
+3. 如需新类型/错误类/工具函数，在对应目录下添加
 
 ### 调试
-
-设置环境变量启用详细日志：
-
 ```bash
-LOG_LEVEL=debug npm run dev
-TMUX_DEBUG=true npm run test:tmux
+LOG_LEVEL=debug npm run dev        # 详细日志
+TMUX_DEBUG=true npm run test:tmux  # tmux 详细日志
 ```
-
-### 查看日志文件
-
-```bash
-# CLI 模式日志
-cat ./logs/cli.log
-
-# 开发模式日志
-cat ./logs/dev.log
-```
+日志文件：`./logs/cli.log`（CLI 模式）、`./logs/dev.log`（开发模式）。
