@@ -5,7 +5,7 @@
 import 'dotenv/config';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { ensureLogDir } from './utils/misc.js';
-import { acquireLock, releaseLock } from './utils/process_lock.js';
+import { acquireAppLock, createShutdownHandler, registerSystemHandlers } from './bootstrap.js';
 import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';
@@ -31,11 +31,7 @@ async function main(): Promise<void> {
 
   // 获取进程锁，防止多实例并发启动
   const lockFile = config.lockFile;
-  const lockResult = acquireLock(lockFile);
-  if (!lockResult.acquired) {
-    console.error(`Error: ${lockResult.message}`);
-    process.exit(1);
-  }
+  acquireAppLock(lockFile);
 
   const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir, config.instanceId);
   const commandRouter = createCommandRouter({ tmuxManager });
@@ -157,65 +153,37 @@ async function main(): Promise<void> {
   );
   timeoutChecker.start();
 
-  let isShuttingDown = false;
-
-  const gracefulShutdown = (signal: string): void => {
-    if (isShuttingDown) return;
-
-    isShuttingDown = true;
-    logger.info('shutdown', `收到信号: ${signal}，开始优雅退出`);
-
-    timeoutChecker.stop();
-
-    // 强制保存状态
-    const stateGetter = () => ({
-      version: 1,
-      instanceId: config.instanceId,
-      chatStates: stateManager.getAllStatesData(),
-      lastSessionMap: Object.fromEntries(lastSessionMap.entries()),
-      sessionStates: (() => {
-        const data: Record<string, { offset: number; lineBuffer: string; logPath: string }> = {};
-        const outputManager = tmuxManager.getOutputManager();
-        const activePipes = tmuxManager.getActivePipes();
-        const sessionStatesData = outputManager.getAllSessionStatesData();
-        for (const [session, state] of Object.entries(sessionStatesData)) {
-          data[session] = {
-            ...state,
-            logPath: activePipes[session] || '',
-          };
-        }
-        return data;
-      })(),
-      savedAt: Date.now(),
-    });
-    statePersistence.scheduleSave(stateGetter);
-    statePersistence.forceFlush();
-
-    releaseLock(lockFile);
-
-    adapter.stop()
-      .then(() => {
-        logger.info('shutdown', '优雅退出完成');
-        process.exit(0);
-      })
-      .catch((error) => {
-        logger.error('shutdown', '退出时出错', error);
-        process.exit(1);
+  const gracefulShutdown = createShutdownHandler({
+    lockFile,
+    timeoutChecker,
+    adapter,
+    extraCleanup: () => {
+      const stateGetter = () => ({
+        version: 1,
+        instanceId: config.instanceId,
+        chatStates: stateManager.getAllStatesData(),
+        lastSessionMap: Object.fromEntries(lastSessionMap.entries()),
+        sessionStates: (() => {
+          const data: Record<string, { offset: number; lineBuffer: string; logPath: string }> = {};
+          const outputManager = tmuxManager.getOutputManager();
+          const activePipes = tmuxManager.getActivePipes();
+          const sessionStatesData = outputManager.getAllSessionStatesData();
+          for (const [session, state] of Object.entries(sessionStatesData)) {
+            data[session] = {
+              ...state,
+              logPath: activePipes[session] || '',
+            };
+          }
+          return data;
+        })(),
+        savedAt: Date.now(),
       });
-  };
-
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
-  process.on('uncaughtException', (error) => {
-    logger.error('uncaughtException', '未捕获异常', error);
-    gracefulShutdown('uncaughtException');
+      statePersistence.scheduleSave(stateGetter);
+      statePersistence.forceFlush();
+    },
   });
 
-  process.on('unhandledRejection', (reason) => {
-    logger.error('unhandledRejection', '未处理的 Promise 拒绝', reason);
-    gracefulShutdown('unhandledRejection');
-  });
+  registerSystemHandlers(gracefulShutdown, true);
 
   logger.info('main', '启动飞书适配器...');
   await adapter.start(coreProcessor);

@@ -5,7 +5,8 @@
 import 'dotenv/config';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { ensureLogDir } from './utils/misc.js';
-import { acquireLock, releaseLock } from './utils/process_lock.js';
+import { releaseLock } from './utils/process_lock.js';
+import { acquireAppLock, createShutdownHandler, registerSystemHandlers } from './bootstrap.js';
 import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
 import { createCommandRouter } from './command_router.js';
@@ -23,12 +24,7 @@ const config = loadConfig(false);
 const lockFile = config.lockFile;
 
 async function main(): Promise<void> {
-  // 获取进程锁，防止多实例并发启动
-  const lockResult = acquireLock(lockFile);
-  if (!lockResult.acquired) {
-    console.error(`Error: ${lockResult.message}`);
-    process.exit(1);
-  }
+  acquireAppLock(lockFile);
 
   console.log('========================================');
   console.log('  Remote IM Controller - Local CLI');
@@ -71,31 +67,14 @@ async function main(): Promise<void> {
   );
   timeoutChecker.start();
 
-  // 优雅退出处理
-  let isShuttingDown = false;
+  const gracefulShutdown = createShutdownHandler({
+    lockFile,
+    timeoutChecker,
+    adapter,
+    // cli 无持久化，不需要 extraCleanup
+  });
 
-  const gracefulShutdown = (signal: string): void => {
-    if (isShuttingDown) return;
-
-    isShuttingDown = true;
-    logger.info('shutdown', `收到信号: ${signal}，开始优雅退出`);
-
-    timeoutChecker.stop();
-    releaseLock(lockFile);
-
-    adapter.stop()
-      .then(() => {
-        logger.info('shutdown', '优雅退出完成');
-        process.exit(0);
-      })
-      .catch((error) => {
-        logger.error('shutdown', '退出时出错', error);
-        process.exit(1);
-      });
-  };
-
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  registerSystemHandlers(gracefulShutdown, false);
 
   logger.info('main', '启动本地适配器...');
   await adapter.start(processor);
