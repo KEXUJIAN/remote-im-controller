@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { createLogger, setupFileLogging, getLogFilePath } from './logger.js';
 import { ensureLogDir } from './utils/misc.js';
+import { releaseLock } from './utils/process_lock.js';
 import { acquireAppLock, createShutdownHandler, registerSystemHandlers } from './bootstrap.js';
 import { loadConfig } from './config.js';
 import { createTmuxManager } from './tmux_manager.js';
@@ -23,14 +24,12 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 const logger = createLogger('app');
+const config = loadConfig(true);
+const lockFile = config.lockFile;
 
 async function main(): Promise<void> {
   logger.info('main', 'Remote IM Controller 启动中...');
 
-  const config = loadConfig(true);
-
-  // 获取进程锁，防止多实例并发启动
-  const lockFile = config.lockFile;
   acquireAppLock(lockFile);
 
   const tmuxManager = createTmuxManager(config.tmuxDefaultLines, config.tmuxDebug, config.streamLogDir, config.instanceId);
@@ -194,5 +193,6 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   logger.error('main', '启动失败', error);
+  releaseLock(lockFile);
   process.exit(1);
 });
