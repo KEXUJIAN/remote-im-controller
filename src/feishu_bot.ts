@@ -137,53 +137,62 @@ export function createFeishuBot(config: Config): FeishuBot {
   }
 
   /**
+   * 处理消息事件（去重缓存 + 权限检查 + 异步分发）
+   */
+  async function handleMessage(
+    data: FeishuMessageEvent,
+    state: BotState,
+    onMessage: (event: FeishuMessageEvent) => Promise<void>
+  ): Promise<void> {
+    try {
+      const messageId = data.message.message_id;
+
+      // 去重检查
+      if (state.processedMessageIds.has(messageId)) {
+        logger.warn('dedup', '消息重复，已跳过', {
+          messageId,
+          chatId: data.message.chat_id,
+        });
+        return;
+      }
+      state.processedMessageIds.add(messageId);
+      logger.info('dedup', '消息已记录', { messageId });
+
+      // 清理旧缓存
+      if (state.processedMessageIds.size > MESSAGE_ID_CACHE_SIZE) {
+        const arr = Array.from(state.processedMessageIds);
+        const removed = arr.slice(0, arr.length - MESSAGE_ID_CACHE_SIZE);
+        state.processedMessageIds = new Set(arr.slice(-MESSAGE_ID_CACHE_SIZE));
+        logger.debug('dedup', '清理旧缓存', { removedCount: removed.length });
+      }
+
+      // 权限检查
+      const senderOpenId = data.sender?.sender_id?.open_id;
+      if (!checkAdminPermission(senderOpenId, '消息')) {
+        return;
+      }
+
+      logger.info('message', '收到消息', {
+        chatId: data.message.chat_id,
+        messageId: data.message.message_id,
+        messageType: data.message.message_type,
+      });
+
+      // 异步分发
+      setImmediate(() => onMessage(data));
+    } catch (error) {
+      logger.error('message', '消息处理失败', error);
+    }
+  }
+
+  /**
    * 内部启动逻辑
    */
   async function startInternal(
     onMessage: (event: FeishuMessageEvent) => Promise<void>
   ): Promise<void> {
     const eventDispatcher = new lark.EventDispatcher({}).register({
-      'im.message.receive_v1': async (data: FeishuMessageEvent) => {
-        try {
-          const messageId = data.message.message_id;
-
-          // 去重检查（同步，快速返回）
-          if (state.processedMessageIds.has(messageId)) {
-            logger.warn('dedup', '消息重复，已跳过', {
-              messageId,
-              chatId: data.message.chat_id,
-            });
-            return;
-          }
-          state.processedMessageIds.add(messageId);
-          logger.info('dedup', '消息已记录', { messageId });
-
-          // 清理旧缓存
-          if (state.processedMessageIds.size > MESSAGE_ID_CACHE_SIZE) {
-            const arr = Array.from(state.processedMessageIds);
-            const removed = arr.slice(0, arr.length - MESSAGE_ID_CACHE_SIZE);
-            state.processedMessageIds = new Set(arr.slice(-MESSAGE_ID_CACHE_SIZE));
-            logger.debug('dedup', '清理旧缓存', { removedCount: removed.length });
-          }
-
-          // 权限检查
-          const senderOpenId = data.sender?.sender_id?.open_id;
-          if (!checkAdminPermission(senderOpenId, '消息')) {
-            return;
-          }
-
-          logger.info('message', '收到消息', {
-            chatId: data.message.chat_id,
-            messageId: data.message.message_id,
-            messageType: data.message.message_type,
-          });
-
-          // 异步处理（不阻塞响应）
-          setImmediate(() => onMessage(data));
-        } catch (error) {
-          logger.error('message', '消息处理失败', error);
-        }
-      },
+      'im.message.receive_v1': (data: FeishuMessageEvent) => handleMessage(data, state, onMessage),
       'card.action.trigger': async (data: CardActionTriggerEvent) => {
         try {
           if (!state.cardHandler) {
