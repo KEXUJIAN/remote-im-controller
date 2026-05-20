@@ -143,19 +143,15 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     const state = sessionStates.get(sessionName);
     if (!state) return content;
     
-    // 合并上次未完成的行
     const combined = state.lineBuffer + content;
     
-    // 查找最后一个换行符
     const lastNewlineIndex = combined.lastIndexOf('\n');
     
     if (lastNewlineIndex === -1) {
-      // 没有完整行，全部缓冲
       state.lineBuffer = combined;
       return '';
     }
     
-    // 返回完整行，缓冲剩余部分
     const completeLines = combined.slice(0, lastNewlineIndex + 1);
     state.lineBuffer = combined.slice(lastNewlineIndex + 1);
     
@@ -173,7 +169,6 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       return;
     }
     
-    // 如果文件存在，获取当前大小作为初始 offset
     const initialOffset = existsSync(logPath) ? getFileSize(logPath) : 0;
     
     sessionStates.set(sessionName, {
@@ -198,7 +193,6 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     
     const currentSize = existsSync(logPath) ? getFileSize(logPath) : 0;
     
-    // 更新或创建状态
     const state = sessionStates.get(sessionName);
     if (state) {
       state.offset = currentSize;
@@ -247,7 +241,6 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       fromOffset = 0;
     }
     
-    // 计算需要读取的字节数
     const bytesToRead = currentSize - fromOffset;
     
     if (bytesToRead <= 0) {
@@ -255,13 +248,10 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       return { content: '', markerFound: false, markerPosition: 0 };
     }
     
-    // 限制最大输出大小
     const actualBytesToRead = Math.min(bytesToRead, maxOutputSize);
     
-    // 读取内容
     let content = readFileSyncRange(logPath, fromOffset, actualBytesToRead);
     
-    // 如果内容被截断，记录日志
     if (bytesToRead > maxOutputSize) {
       logger.warn('readNewOutput', '输出被截断', { 
         sessionName, 
@@ -280,15 +270,12 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
       markerPosition = result.position;
     }
     
-    // 清理终端控制序列
     content = cleanTerminalOutput(content);
     
-    // 处理行缓冲
     if (state) {
       content = processLineBuffer(sessionName, content);
     }
     
-    // 更新 offset
     if (state) {
       state.offset = currentSize;
     }
@@ -331,12 +318,10 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
     const { intervalMs, onChunk, markerDetector } = options;
     return new Promise<void>((resolve) => {
     
-    // 如果已经在流式推送，先停止
     if (streamingTimers.has(sessionName)) {
       stopStreaming(sessionName);
     }
     
-    // 初始化流式 offset
     const logPath = getLogPath(sessionName);
     const initialOffset = logPath && existsSync(logPath) ? getFileSize(logPath) : 0;
     streamingOffsets.set(sessionName, initialOffset);
@@ -359,30 +344,25 @@ export function createSessionOutputManager(options: SessionOutputManagerOptions)
         
         const result = readNewOutput(sessionName, currentOffset, markerDetector);
         
-        // 更新 offset
         const state = sessionStates.get(sessionName);
         if (state) {
           streamingOffsets.set(sessionName, state.offset);
         }
         
         if (result.content) {
-          // 检查标记
           if (result.markerFound) {
             logger.info('startStreaming', '检测到完成标记', { sessionName, position: result.markerPosition });
             
-            // 推送标记之前的内容
             const contentBeforeMarker = result.content.slice(0, result.markerPosition);
             if (contentBeforeMarker) {
               await onChunk(contentBeforeMarker);
             }
             
-            // 停止流式推送
             stopStreaming(sessionName);
             resolve();
             return;
           }
           
-          // 推送新内容
           await onChunk(result.content);
         }
       } catch (err) {

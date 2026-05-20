@@ -33,22 +33,17 @@ export function tokenize(body: string): string[] {
     const char = body[i];
 
     if (inQuotes) {
-      // 在引号内
       if (char === quoteChar) {
-        // 遇到结束引号
         inQuotes = false;
         quoteChar = '';
       } else {
         current += char;
       }
     } else {
-      // 不在引号内
       if (char === '"' || char === "'") {
-        // 开始引号
         inQuotes = true;
         quoteChar = char;
       } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-        // 空格分隔
         if (current.length > 0) {
           tokens.push(current);
           current = '';
@@ -59,7 +54,6 @@ export function tokenize(body: string): string[] {
     }
   }
 
-  // 处理最后一个 token
   if (current.length > 0) {
     tokens.push(current);
   }
@@ -75,12 +69,10 @@ export function tokenize(body: string): string[] {
 export function parseCommand(input: string): ParsedCommand | null {
   const trimmed = input.trim();
 
-  // 空字符串
   if (!trimmed) {
     return null;
   }
 
-  // 分词
   const tokens = tokenize(trimmed);
 
   if (tokens.length === 0) {
@@ -90,12 +82,10 @@ export function parseCommand(input: string): ParsedCommand | null {
 
   const firstToken = tokens[0]!.toLowerCase();
 
-  // 检查是否是内置动作
   if (isCommandAction(firstToken)) {
     return parseBuiltinAction(firstToken, tokens.slice(1));
   }
 
-  // 否则视为 exec 动作: <session> <command...>
   return parseExecAction(tokens);
 }
 
@@ -112,19 +102,16 @@ function parseBuiltinAction(action: CommandAction, args: string[]): ParsedComman
   switch (action) {
     case 'list':
     case 'help':
-      // 无参数
       break;
 
     case 'create':
     case 'kill':
-      // 需要一个会话名参数
       if (args.length > 0 && args[0]) {
         result.session = args[0];
       }
       break;
 
     case 'status':
-      // 可选会话名参数
       if (args.length > 0 && args[0]) {
         result.session = args[0];
       }
@@ -139,12 +126,10 @@ function parseBuiltinAction(action: CommandAction, args: string[]): ParsedComman
  * 解析 exec 动作
  */
 function parseExecAction(tokens: string[]): ParsedCommand | null {
-  // 第一个 token 是 session 名
   const session = tokens[0];
   if (!session) {
     return null;
   }
-  // 剩余的是要执行的命令
   const commandTokens = tokens.slice(1);
 
   const result: ParsedCommand = {

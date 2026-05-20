@@ -77,7 +77,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   async function handleTextMessage(userId: string, chatId: string, text: string): Promise<void> {
     const state = stateManager.getState(userId);
 
-    // COMMAND 模式：调用指令路由器
     if (state.mode === 'COMMAND') {
       const parsed = parseCommand(text);
       if (!parsed) {
@@ -92,7 +91,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         config,
       };
 
-      // 添加 lastSession
       if (lastSessionMap) {
         const lastSession = lastSessionMap.get(userId);
         if (lastSession !== undefined) {
@@ -102,7 +100,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
       const result = await commandRouter.route(ctx);
 
-      // 更新 lastSession
       if (result.lastSession && lastSessionMap) {
         lastSessionMap.set(userId, result.lastSession);
       }
@@ -113,13 +110,11 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
         logger.info('handleTextMessage', 'exec 后自动进入 SESSION 模式', { userId, session: result.lastSession });
       }
 
-      // 优先发送模板卡片
       if (result.cardVariables && config.cardTemplateId && sendTemplateCard) {
         await sendTemplateCard(chatId, config.cardTemplateId, result.cardVariables);
         return;
       }
 
-      // 构建回复消息
       let replyText = result.message;
       if (result.hint) {
         replyText += `\n\n💡 ${result.hint}`;
@@ -196,7 +191,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   async function handleCardEvent(userId: string, chatId: string, payload: CardEventPayload): Promise<void> {
     const state = stateManager.getState(userId);
 
-    // 如果已在 SESSION 模式，拒绝进入
     if (state.mode === 'SESSION') {
       await sendMessage(chatId, `❌ 当前已在会话模式（${state.activeSession}），请先退出`);
       return;
@@ -205,20 +199,17 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
     const { action, sessionName } = payload;
 
     if (action === 'enter') {
-      // 检查会话是否存在
       const exists = await tmuxManager.sessionExists(sessionName);
       if (!exists) {
         await sendMessage(chatId, `❌ 会话 "${sessionName}" 不存在`);
         return;
       }
 
-      // 切换到 SESSION 模式
       stateManager.transition(userId, { mode: 'SESSION', activeSession: sessionName });
       logger.info('handleCardEvent', `进入 SESSION 模式`, { chatId, sessionName });
 
       await sendMessage(chatId, `✅ 已进入会话模式：${sessionName}`);
     } else if (action === 'kill') {
-      // 终止会话
       logger.info('handleCardEvent', `终止会话`, { chatId, sessionName });
 
       const exists = await tmuxManager.sessionExists(sessionName);
@@ -238,7 +229,6 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
   async function handleMenuEvent(userId: string, payload: MenuEventPayload): Promise<void> {
     logger.debug('handleMenuEvent', `菜单事件`, { userId, eventKey: payload.eventKey });
 
-    // 只处理 exit_wsl_session_mode 事件
     if (payload.eventKey !== 'exit_wsl_session_mode') {
       logger.debug('handleMenuEvent', '忽略非退出菜单事件', { eventKey: payload.eventKey });
       return;
@@ -246,14 +236,12 @@ export function createCoreProcessor(deps: CoreProcessorDeps): CoreProcessor {
 
     const state = stateManager.getState(userId);
 
-    // 如果在 SESSION 模式，退出
     if (state.mode === 'SESSION' && state.activeSession) {
       const sessionName = state.activeSession;
       stateManager.resetState(userId);
       logger.info('handleMenuEvent', `退出 SESSION 模式`, { userId, sessionName });
       await sendToUser(userId, `✅ 已退出会话模式：${sessionName}`);
     } else {
-      // 不在 SESSION 模式时提示用户
       await sendToUser(userId, '⚠️ 当前不在会话模式');
     }
 

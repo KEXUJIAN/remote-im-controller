@@ -76,7 +76,6 @@ async function main(): Promise<void> {
     // 恢复聊天状态
     stateManager.loadStates(persistedState.chatStates);
 
-    // 恢复 lastSessionMap
     for (const [userId, session] of Object.entries(persistedState.lastSessionMap)) {
       lastSessionMap.set(userId, session);
     }
@@ -94,7 +93,6 @@ async function main(): Promise<void> {
   if (persistedState && Object.keys(persistedState.sessionStates).length > 0) {
     const recovered = await tmuxManager.recoverSessions(persistedState.sessionStates);
 
-    // 加载恢复的会话输出状态
     const outputManager = tmuxManager.getOutputManager();
     outputManager.loadSessionStates(persistedState.sessionStates);
 
@@ -105,7 +103,6 @@ async function main(): Promise<void> {
         const sessionName = state.activeSession;
 
         if (!recovered.includes(sessionName)) {
-          // 会话不存在，重置状态
           stateManager.resetState(chatId);
           await feishuBot.sendToUser(
             chatId,
@@ -132,7 +129,6 @@ async function main(): Promise<void> {
           stateManager.clearBusy(chatId);
         }
 
-        // 重置活动时间
         stateManager.renewActivity(chatId);
       }
     }
