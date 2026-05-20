@@ -258,18 +258,6 @@ export type BotMenuEvent = Parameters<
 
 // ============ 流式推送相关 ============
 
-/** 流消费者接口 */
-export interface StreamConsumer {
-  /** 启动消费 */
-  start(): void;
-  /** 停止消费 */
-  stop(): void;
-  /** 重置状态 */
-  reset(): void;
-  /** 销毁资源 */
-  destroy(): Promise<void>;
-}
-
 /** 标记检测器接口 */
 export interface MarkerDetector {
   /** 检测内容中的标记 */

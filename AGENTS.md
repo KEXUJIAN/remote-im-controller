@@ -87,7 +87,12 @@ npm run pm2 delete      # 删除进程
 | 类型/接口 | `PascalCase` |
 | 类型定义 | 集中在 `src/types.ts`，错误类在 `src/errors.ts` |
 | 注释 | 中文；保留解释"为什么"的注释，删除解释"是什么"的 |
-| 禁止 | `as any`、`@ts-ignore`、`@ts-expect-error`、空 catch 块 |
+| 变量缩写 | 社区惯用缩写可接受（`rl`/`proc`/`res`/`temp`），不需要全称 |
+| 常量提取 | 仅当值重复出现、含义不清、可能变化时才提取；字面值（API 参数、配置分支值）不需要封装 |
+| 导入语句 | `import type` 和值导入分开写是 TypeScript 语法要求，不是重复 |
+| 模块耦合 | 模块间调用分散在清晰逻辑区块时，不强行封装组合 API |
+| 变量命名 | 类型注解明确时，通用名称（`result`）不强制重命名 |
+| 禁止 | `as any`、`@ts-ignore`、`@ts-expect-error`；空 catch 块需加 debug 日志，不可静默吞异常 |
 
 ```typescript
 // 工厂函数模式 — 模块导出 createXxx 函数，返回实现接口的对象

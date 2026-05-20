@@ -6,6 +6,9 @@
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
 import { dirname } from 'path';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('process_lock');
 
 
 /** 锁获取成功结果 */
@@ -147,7 +150,7 @@ export function releaseLock(lockFile: string): void {
     if (existsSync(lockFile)) {
       unlinkSync(lockFile);
     }
-  } catch {
-    // 忽略删除失败
+  } catch (err) {
+    logger.debug('releaseLock', '释放锁失败（忽略）', { error: String(err) });
   }
 }
